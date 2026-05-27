@@ -22,6 +22,7 @@ from ark.ui.panels.inspector_panel import InspectorPanel
 from ark.ui.panels.terminal_panel import TerminalPanel
 from ark.ui.node_editor.view import NodeEditorView
 from ark.ui.node_editor.scene import NodeScene
+from ark.ui.project_tabs import ProjectTabs
 from ark.nodes.registry import default_registry
 from ark.core.templates import TEMPLATES_LIST, get_template
 
@@ -72,6 +73,10 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
         # Templates
+        a_browse = QAction("Parcourir templates...", self)
+        a_browse.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        a_browse.triggered.connect(self._on_browse_templates)
+        file_menu.addAction(a_browse)
         tpl_menu = file_menu.addMenu("Nouveau depuis template")
         for tpl_name, tpl_label in TEMPLATES_LIST:
             tpl_menu.addAction(tpl_label, lambda n=tpl_name: self._load_template(n))
@@ -147,9 +152,33 @@ class MainWindow(QMainWindow):
     # Central widget : node editor
     # ------------------------------------------------------------
     def _build_central(self):
-        self.scene = NodeScene(registry=self._registry, undo_stack=self.undo_stack)
-        self.view = NodeEditorView(self.scene)
-        self.setCentralWidget(self.view)
+        # Workspace multi-projets (Phase 12)
+        self.tabs = ProjectTabs(registry=self._registry, parent=self)
+        # Premier projet vide
+        self.tabs.new_project("Sans titre")
+        # Wire active changed → update scene/undo refs
+        self.tabs.active_changed.connect(self._on_active_project_changed)
+        # Init scene/view/undo aux valeurs du tab actif
+        s, v, u = self.tabs.active()
+        self.scene = s
+        self.view = v
+        if u is not None:
+            self.undo_stack = u
+        self.setCentralWidget(self.tabs)
+
+    def _on_active_project_changed(self, scene, view, undo):
+        # Disconnect ancienne scène
+        try:
+            self.scene.selectionChanged.disconnect(self._on_scene_selection_changed)
+        except (TypeError, RuntimeError):
+            pass
+        self.scene = scene
+        self.view = view
+        self.undo_stack = undo
+        self.scene.selectionChanged.connect(self._on_scene_selection_changed)
+        # Sync undo actions menubar (les actions sont créées sur un stack
+        # spécifique ; pour simplifier on reconstruit le edit menu undo si besoin)
+        self.statusBar().showMessage(f"Projet actif : {self.tabs.tabText(self.tabs.currentIndex())}", 1500)
 
     # ------------------------------------------------------------
     # Docks
@@ -181,8 +210,9 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock_term)
         self.dock_terminal = dock_term
 
-        # Connection sélection node ↔ inspector
+        # Connection sélection node ↔ inspector (sera reconnecté à chaque switch tab)
         self.scene.selectionChanged.connect(self._on_scene_selection_changed)
+        self.tabs.active_changed.connect(lambda s, v, u: None)  # déjà wired plus haut
 
     # ------------------------------------------------------------
     # Slots
@@ -203,23 +233,35 @@ class MainWindow(QMainWindow):
             self.inspector.set_node(None)
 
     def _on_new(self):
-        self.scene.clear_graph()
-        self.statusBar().showMessage("Nouveau graphe", 1500)
+        # Phase 12 : ouvre un NOUVEAU tab (vs effacer l'actuel)
+        self.tabs.new_project("Sans titre")
+        self.statusBar().showMessage("Nouveau projet", 1500)
 
     def _on_open(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Ouvrir une architecture", "",
-                                                "ARK JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Ouvrir une architecture", "",
+            "Tous formats JSON (*.json)"
+        )
         if not path:
             return
         try:
-            from ark.core.format import load_scene
-            payload = load_scene(self.scene, path)
+            from ark.core.import_legacy import load_any
+            payload, fmt = load_any(path)
+            name = payload.get("name") or path.split("/")[-1].replace(".json", "")
+            # Phase 12 : ouvre dans NOUVEAU tab
+            self.tabs.new_project(name, payload=payload)
             self._current_file = path
-            self.undo_stack.clear()
-            self.statusBar().showMessage(f"Chargé : {path}", 3000)
-            self.terminal.append_log(f"[load] {payload.get('name', '?')} — "
-                                       f"{len(self.scene.nodes())} nodes, "
-                                       f"{len(self.scene.connections())} conns")
+            extra = ""
+            if fmt == "electron":
+                skipped = payload.get("metadata", {}).get("unknown_types_skipped", [])
+                if skipped:
+                    extra = f" (skipped: {set(skipped)})"
+            self.statusBar().showMessage(f"Chargé [{fmt}] : {path}{extra}", 4000)
+            self.terminal.append_log(
+                f"[load:{fmt}] {name} — "
+                f"{len(self.scene.nodes())} nodes, "
+                f"{len(self.scene.connections())} conns{extra}"
+            )
         except Exception as e:
             QMessageBox.critical(self, "Erreur de chargement", str(e))
 
@@ -417,19 +459,23 @@ class MainWindow(QMainWindow):
                           "<h2>ARK</h2><p>Architecture builder node-based.</p>"
                           "<p>Refonte Python (PySide6) de ai-arch-builder.</p>")
 
+    def _on_browse_templates(self):
+        from ark.ui.dialogs.templates_browser import TemplatesBrowser
+        dlg = TemplatesBrowser(self)
+        dlg.template_chosen.connect(self._load_template)
+        dlg.exec()
+
     def _load_template(self, name: str):
         payload = get_template(name)
         if payload is None:
             QMessageBox.warning(self, "Template", f"Template '{name}' introuvable")
             return
-        from ark.core.format import payload_to_scene
+        # Phase 12 : ouvre dans un NOUVEAU tab (préserve projets existants)
         try:
-            payload_to_scene(self.scene, payload)
-            self.undo_stack.clear()
+            label = next((lbl for n, lbl in TEMPLATES_LIST if n == name), name)
+            self.tabs.new_project(label, payload=payload)
             self.statusBar().showMessage(f"Template chargé : {name}", 3000)
-            self.terminal.append_log(f"[template] {name} — "
-                                       f"{len(self.scene.nodes())} nodes, "
-                                       f"{len(self.scene.connections())} conns")
+            self.terminal.append_log(f"[template] {name} → nouvel onglet")
         except Exception as e:
             QMessageBox.critical(self, "Erreur template", str(e))
 
