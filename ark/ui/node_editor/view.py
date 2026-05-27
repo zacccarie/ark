@@ -1,12 +1,13 @@
-"""ARK QGraphicsView : zoom souris, pan middle/space-drag, double-clic search."""
+"""ARK QGraphicsView : zoom, pan multi-modal (middle/space/3-finger trackpad/handle), search."""
 from __future__ import annotations
-from PySide6.QtCore import Qt, QPointF, QPoint
+from PySide6.QtCore import Qt, QPointF, QPoint, QEvent
 from PySide6.QtGui import QPainter, QKeyEvent, QMouseEvent, QWheelEvent, QAction
 from PySide6.QtWidgets import QGraphicsView, QMenu
 
 from ark.ui.node_editor.search_overlay import SearchOverlay
 from ark.ui.node_editor.socket_item import SocketItem, types_compatible
 from ark.ui.node_editor.connection_item import ConnectionItem
+from ark.ui.node_editor.pan_handle import PanHandle
 
 
 class NodeEditorView(QGraphicsView):
@@ -32,6 +33,15 @@ class NodeEditorView(QGraphicsView):
         self._dragging_conn: ConnectionItem | None = None
         self._drag_start_socket: SocketItem | None = None
         self._drag_hover_socket: SocketItem | None = None
+        # Trackpad gesture (macOS 3-finger swipe + pinch zoom)
+        self.viewport().grabGesture(Qt.GestureType.PanGesture)
+        self.viewport().grabGesture(Qt.GestureType.PinchGesture)
+        self._gesture_zoom_accum = 1.0
+        # Pan handle flottant (overlay bas-droite)
+        self.pan_handle = PanHandle(self)
+        self.pan_handle.pan_delta.connect(self._on_handle_pan)
+        # Tactile : pinch trackpad émet NativeGesture
+        self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
 
     # ----- Zoom -----
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -106,6 +116,59 @@ class NodeEditorView(QGraphicsView):
     def _end_pan(self):
         self._panning = False
         self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def _on_handle_pan(self, dx: float, dy: float):
+        """Slot pour pan handle widget — translate scrollbars."""
+        self.horizontalScrollBar().setValue(int(self.horizontalScrollBar().value() - dx))
+        self.verticalScrollBar().setValue(int(self.verticalScrollBar().value() - dy))
+
+    # ----- Trackpad gestures (macOS 3-finger swipe = PanGesture, pinch = PinchGesture) -----
+    def viewportEvent(self, event):
+        if event.type() == QEvent.Type.Gesture:
+            return self._handle_gesture(event)
+        if event.type() == QEvent.Type.NativeGesture:
+            return self._handle_native_gesture(event)
+        return super().viewportEvent(event)
+
+    def _handle_gesture(self, event):
+        pan = event.gesture(Qt.GestureType.PanGesture)
+        if pan is not None:
+            delta = pan.delta()
+            self.horizontalScrollBar().setValue(
+                int(self.horizontalScrollBar().value() - delta.x())
+            )
+            self.verticalScrollBar().setValue(
+                int(self.verticalScrollBar().value() - delta.y())
+            )
+            return True
+        pinch = event.gesture(Qt.GestureType.PinchGesture)
+        if pinch is not None:
+            sf = pinch.scaleFactor()
+            current = self.transform().m11()
+            new = current * sf
+            if self.MIN_ZOOM <= new <= self.MAX_ZOOM:
+                self.scale(sf, sf)
+            return True
+        return False
+
+    def _handle_native_gesture(self, event):
+        gtype = event.gestureType()
+        if gtype == Qt.NativeGestureType.ZoomNativeGesture:
+            sf = 1.0 + event.value()
+            current = self.transform().m11()
+            new = current * sf
+            if self.MIN_ZOOM <= new <= self.MAX_ZOOM:
+                self.scale(sf, sf)
+            return True
+        if gtype == Qt.NativeGestureType.SwipeNativeGesture:
+            return True
+        return False
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Replace handle bottom-right
+        if hasattr(self, "pan_handle"):
+            self.pan_handle.reposition()
 
     # ----- Double-clic empty space → search overlay -----
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
