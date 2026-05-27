@@ -490,6 +490,28 @@ def _lazy_register_devices():
 
 _lazy_register_devices()
 
+
+# Diffusion stubs (Phase 4 stub) — pas de download modèles, juste pipeline
+def _register_diffusion_stubs():
+    from ark.core.diffusion_stubs import (
+        h_diffusion_model_loader, h_clip_text_encode, h_empty_latent_image,
+        h_k_sampler, h_vae_decode, h_vae_encode, h_load_image, h_save_image,
+        h_lora_loader, h_controlnet_apply,
+    )
+    HANDLERS["diffusion_model_loader"] = h_diffusion_model_loader
+    HANDLERS["clip_text_encode"] = h_clip_text_encode
+    HANDLERS["empty_latent_image"] = h_empty_latent_image
+    HANDLERS["k_sampler"] = h_k_sampler
+    HANDLERS["vae_decode"] = h_vae_decode
+    HANDLERS["vae_encode"] = h_vae_encode
+    HANDLERS["load_image"] = h_load_image
+    HANDLERS["save_image"] = h_save_image
+    HANDLERS["lora_loader"] = h_lora_loader
+    HANDLERS["controlnet_apply"] = h_controlnet_apply
+
+_register_diffusion_stubs()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
