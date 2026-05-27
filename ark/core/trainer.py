@@ -10,13 +10,16 @@ class TrainerWorker(QObject):
     status_changed = Signal(str)
     epoch_finished = Signal(dict)
     batch_progressed = Signal(dict)
+    observations = Signal(dict)   # {ark_node_id: {metric: value}}
+    auto_mutated = Signal(dict)    # {epoch, triggered: [...], n_params}
     error = Signal(str)
     done = Signal()
 
     def __init__(self, compiled, train_loader, val_loader=None,
                  epochs: int = 1, lr: float = 1e-3,
                  loss_kind: str = "cross_entropy",
-                 device: torch.device | None = None):
+                 device: torch.device | None = None,
+                 auto_mutate: bool = False):
         super().__init__()
         self.compiled = compiled
         self.train_loader = train_loader
@@ -25,6 +28,7 @@ class TrainerWorker(QObject):
         self.lr = lr
         self.loss_kind = loss_kind
         self.device = device or torch.device("cpu")
+        self.auto_mutate = auto_mutate
         self._stop = False
 
     def stop(self):
@@ -85,11 +89,68 @@ class TrainerWorker(QObject):
                     "val_loss": val_loss, "val_acc": val_acc,
                     "elapsed": time.time() - t0,
                 })
+                # Vague C — emit observations + apply triggers
+                obs_dict, all_metrics = self._collect_observers(model)
+                if obs_dict:
+                    self.observations.emit({"epoch": ep, "observers": obs_dict})
+                if self.auto_mutate:
+                    triggered = self._evaluate_and_apply(model, all_metrics)
+                    if triggered:
+                        any_applied = any(a.get("applied") for a in triggered)
+                        if any_applied:
+                            model.to(self.device)
+                            optim = torch.optim.Adam(model.parameters(), lr=self.lr)
+                        self.auto_mutated.emit({
+                            "epoch": ep, "triggered": triggered,
+                            "n_params": sum(p.numel() for p in model.parameters()),
+                        })
             self.status_changed.emit("done")
             self.done.emit()
         except Exception as e:
             import traceback
             self.error.emit(f"{e}\n{traceback.format_exc()}")
+
+    def _collect_observers(self, model):
+        """Récupère last_metrics par node_id ARK + dict agrégé."""
+        per_node: dict = {}
+        all_metrics: dict = {}
+        for nid, m in model.modules_dict.items():
+            ark_id = getattr(m, "_ark_node_id", None)
+            if ark_id and hasattr(m, "last_metrics") and isinstance(m.last_metrics, dict):
+                per_node[ark_id] = dict(m.last_metrics)
+                all_metrics.update(m.last_metrics)
+        return per_node, all_metrics
+
+    def _evaluate_and_apply(self, model, metrics: dict) -> list[dict]:
+        triggered = []
+        # Map ark_node_id → module pour résolution target
+        ark_to_module = {}
+        for nid, mod in model.modules_dict.items():
+            aid = getattr(mod, "_ark_node_id", None)
+            if aid:
+                ark_to_module[aid] = mod
+        for nid, m in model.modules_dict.items():
+            if hasattr(m, "evaluate") and callable(m.evaluate):
+                action = m.evaluate(metrics)
+                if not action:
+                    continue
+                action["from_rule"] = getattr(m, "_ark_node_id", nid)
+                target_id = action["node_id"]
+                target = ark_to_module.get(target_id)
+                if target is None or not hasattr(target, action["op"]):
+                    action["applied"] = False
+                    action["error"] = f"node {target_id!r} cannot {action['op']}"
+                else:
+                    try:
+                        getattr(target, action["op"])(action.get("delta", 8))
+                        action["applied"] = True
+                        if hasattr(target, "hidden_dim"):
+                            action["new_hidden_dim"] = target.hidden_dim
+                    except Exception as e:
+                        action["applied"] = False
+                        action["error"] = str(e)
+                triggered.append(action)
+        return triggered
 
 
 def pick_device() -> torch.device:

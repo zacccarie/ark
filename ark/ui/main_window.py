@@ -87,9 +87,14 @@ class MainWindow(QMainWindow):
 
         view_menu = menubar.addMenu("Affichage")
         view_menu.addAction("Reset layout", self._on_reset_layout)
+        view_menu.addSeparator()
         view_menu.addAction("Layout : Workspace", lambda: self._apply_preset("workspace"))
         view_menu.addAction("Layout : Compact", lambda: self._apply_preset("compact"))
         view_menu.addAction("Layout : Code-first", lambda: self._apply_preset("code"))
+        view_menu.addAction("Layout : Training-focus", lambda: self._apply_preset("training"))
+        view_menu.addSeparator()
+        view_menu.addAction("Sauver layout courant...", self._on_save_layout)
+        view_menu.addAction("Charger layout...", self._on_load_layout)
 
         run_menu = menubar.addMenu("Exécution")
         a_run = QAction("Compiler", self)
@@ -225,10 +230,66 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erreur de sauvegarde", str(e))
 
     def _on_reset_layout(self):
-        self.statusBar().showMessage("Reset layout — TODO presets", 1500)
+        self._apply_preset("workspace")
 
     def _apply_preset(self, name: str):
-        self.statusBar().showMessage(f"Layout preset : {name} — TODO", 2000)
+        """Reset puis applique un preset layout déterministe."""
+        # Restore base : remove all docks puis re-add
+        for d in (self.dock_palette, self.dock_inspector, self.dock_terminal):
+            self.removeDockWidget(d)
+            d.setVisible(True)
+            d.setFloating(False)
+        if name == "workspace":
+            # Palette gauche large, Inspector droite, Terminal bas
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_palette)
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_inspector)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_terminal)
+            self.resizeDocks([self.dock_palette], [240], Qt.Orientation.Horizontal)
+            self.resizeDocks([self.dock_inspector], [280], Qt.Orientation.Horizontal)
+            self.resizeDocks([self.dock_terminal], [180], Qt.Orientation.Vertical)
+        elif name == "compact":
+            # Palette + Inspector côte à côte à gauche, Terminal fermé
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_palette)
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_inspector)
+            self.tabifyDockWidget(self.dock_palette, self.dock_inspector)
+            self.dock_palette.raise_()
+            self.dock_terminal.setVisible(False)
+            self.resizeDocks([self.dock_palette], [260], Qt.Orientation.Horizontal)
+        elif name == "code":
+            # Terminal/Python prend la moitié droite, palette gauche fine
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_palette)
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_terminal)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_inspector)
+            self.resizeDocks([self.dock_palette], [200], Qt.Orientation.Horizontal)
+            self.resizeDocks([self.dock_terminal], [480], Qt.Orientation.Horizontal)
+            self.resizeDocks([self.dock_inspector], [160], Qt.Orientation.Vertical)
+        elif name == "training":
+            # Pas de palette (cachée), Inspector + Terminal grands pour suivre training
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_inspector)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_terminal)
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_palette)
+            self.dock_palette.setVisible(False)
+            self.resizeDocks([self.dock_inspector], [320], Qt.Orientation.Horizontal)
+            self.resizeDocks([self.dock_terminal], [320], Qt.Orientation.Vertical)
+        self.statusBar().showMessage(f"Layout : {name}", 2000)
+
+    def _on_save_layout(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Sauver layout", "layout.bin",
+                                                "Layout (*.bin)")
+        if not path:
+            return
+        with open(path, "wb") as f:
+            f.write(self.saveState())
+        self.statusBar().showMessage(f"Layout sauvé : {path}", 2000)
+
+    def _on_load_layout(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Charger layout", "",
+                                                "Layout (*.bin)")
+        if not path:
+            return
+        with open(path, "rb") as f:
+            self.restoreState(f.read())
+        self.statusBar().showMessage(f"Layout chargé : {path}", 2000)
 
     def _on_compile(self):
         from ark.core.graph_compiler import compile_scene, GraphCompileError
@@ -252,22 +313,69 @@ class MainWindow(QMainWindow):
         except GraphCompileError as e:
             QMessageBox.critical(self, "Compile error", str(e))
             return
-        # Setup thread + worker
         self._thread = QThread(self)
         train_loader, val_loader = mnist_loaders(n_train=3000, n_val=1000, batch_size=128)
+        # Détecte si auto_mutate doit être activé (présence de trigger_rule + vg_block)
+        types = {n.spec.name for n in self.scene.nodes()}
+        auto_mut = ("trigger_rule" in types and "vg_block" in types)
         self._worker = TrainerWorker(self._compiled, train_loader, val_loader,
-                                       epochs=1, device=pick_device())
+                                       epochs=2, device=pick_device(),
+                                       auto_mutate=auto_mut)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.status_changed.connect(lambda s: self.terminal.append_log(f"[train] {s}"))
         self._worker.batch_progressed.connect(self._on_batch)
         self._worker.epoch_finished.connect(self._on_epoch)
+        self._worker.observations.connect(self._on_observations)
+        self._worker.auto_mutated.connect(self._on_auto_mutated)
         self._worker.error.connect(lambda e: self.terminal.append_log(f"[train error] {e}"))
         self._worker.done.connect(self._thread.quit)
         self._thread.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
         self._thread.start()
-        self.statusBar().showMessage("Training démarré...", 2000)
+        msg = "Training démarré (auto_mutate)" if auto_mut else "Training démarré"
+        self.statusBar().showMessage(msg, 2000)
+
+    def _on_observations(self, info: dict):
+        epoch = info.get("epoch")
+        observers = info.get("observers", {})
+        # Store history + push to inspector live chart
+        for nid, metrics in observers.items():
+            for n in self.scene.nodes():
+                if n.id == nid:
+                    hist = getattr(n, "_metric_history", None)
+                    if hist is None:
+                        hist = []
+                        n._metric_history = hist
+                    hist.append(dict(metrics))
+                    # Cap rolling
+                    if len(hist) > 60:
+                        n._metric_history = hist[-60:]
+            self.inspector.push_live_metrics(nid, metrics)
+        summary = " | ".join(
+            f"{nid[:8]}: {', '.join(f'{k}={v:.3f}' if isinstance(v, float) else f'{k}={v}' for k, v in m.items())}"
+            for nid, m in observers.items()
+        )
+        self.terminal.append_log(f"[obs ep{epoch}] {summary}")
+
+    def _on_auto_mutated(self, info: dict):
+        epoch = info.get("epoch")
+        for a in info.get("triggered", []):
+            if a.get("applied"):
+                tb = a.get("triggered_by", {})
+                self.terminal.append_log(
+                    f"[mutate ep{epoch}] {a['node_id'][:8]} {a['op']} +{a['delta']} → "
+                    f"h={a.get('new_hidden_dim', '?')} ({tb.get('metric')}={tb.get('value'):.3f} "
+                    f"{tb.get('op')} {tb.get('threshold')})"
+                )
+                # Update visual node
+                for n in self.scene.nodes():
+                    if n.id == a["node_id"]:
+                        n.params["start_hidden"] = a.get("new_hidden_dim", n.params.get("start_hidden"))
+                        n.update()
+                        break
+            elif a.get("error"):
+                self.terminal.append_log(f"[mutate ep{epoch} fail] {a['error']}")
 
     def _on_batch(self, info: dict):
         self.statusBar().showMessage(

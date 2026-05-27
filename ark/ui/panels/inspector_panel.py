@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 from ark.ui import design_tokens as T
+from ark.ui.widgets.metric_chart import MetricChart
 from ark.nodes.registry import ParamSpec
 
 
@@ -14,9 +15,11 @@ class InspectorPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._node = None
+        self._metric_chart: MetricChart | None = None
         v = QVBoxLayout(self)
         v.setContentsMargins(T.S_3, T.S_3, T.S_3, T.S_3)
         v.setSpacing(T.S_2)
+        self._main_layout = v
 
         self.title = QLabel("Aucune sélection", self)
         self.title.setProperty("role", "h1")
@@ -33,6 +36,14 @@ class InspectorPanel(QWidget):
         sep.setStyleSheet(f"color: {T.BORDER_DEFAULT};")
         v.addWidget(sep)
 
+        # Chart placeholder (visible seulement pour nodes observer)
+        self._chart_host = QWidget(self)
+        from PySide6.QtWidgets import QVBoxLayout as _VBL
+        self._chart_layout = _VBL(self._chart_host)
+        self._chart_layout.setContentsMargins(0, 0, 0, T.S_2)
+        v.addWidget(self._chart_host)
+        self._chart_host.hide()
+
         self._form_host = QWidget(self)
         self._form = QFormLayout(self._form_host)
         self._form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -43,17 +54,45 @@ class InspectorPanel(QWidget):
 
     def set_node(self, node):
         self._clear_form()
+        self._clear_chart()
         self._node = node
         if node is None:
             self.title.setText("Aucune sélection")
             self.subtitle.setText("")
+            self._chart_host.hide()
             return
         self.title.setText(node.spec.title)
-        self.subtitle.setText(f"{node.spec.category}   ·   id {node.id}")
+        self.subtitle.setText(f"{node.spec.category}   ·   id {node.id[:14]}")
+        # Chart pour observer / vg_block
+        if node.spec.name == "observer":
+            self._metric_chart = MetricChart(self._chart_host, width=260, height=140)
+            self._chart_layout.addWidget(self._metric_chart)
+            self._chart_host.show()
+            # Replay si historique
+            history = getattr(node, "_metric_history", None)
+            if history:
+                for m in history:
+                    self._metric_chart.push_metrics(m)
+        else:
+            self._chart_host.hide()
         for p in node.spec.params:
             w = self._build_param_widget(p, node.params.get(p.name, p.default), node)
             if w:
                 self._form.addRow(p.name + " :", w)
+
+    def push_live_metrics(self, node_id: str, metrics: dict):
+        """Push depuis trainer.observations vers chart si node sélectionné."""
+        if self._node is None or self._node.id != node_id:
+            return
+        if self._metric_chart is None:
+            return
+        self._metric_chart.push_metrics(metrics)
+
+    def _clear_chart(self):
+        if self._metric_chart is not None:
+            self._chart_layout.removeWidget(self._metric_chart)
+            self._metric_chart.deleteLater()
+            self._metric_chart = None
 
     def _clear_form(self):
         while self._form.rowCount() > 0:

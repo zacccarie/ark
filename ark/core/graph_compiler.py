@@ -214,14 +214,52 @@ def h_moe_switch(node, in_shapes):
 
 
 class _VGBlock(nn.Module):
+    """MLP mutable (vague B) avec widen/prune function-preserving."""
     def __init__(self, in_d, out_d, hidden, act):
         super().__init__()
-        self.in_d, self.out_d, self.hidden = in_d, out_d, hidden
+        self.in_d, self.out_d, self.hidden_dim = in_d, out_d, hidden
         self.fc1 = nn.Linear(in_d, hidden)
         self.act = _act(act)
         self.fc2 = nn.Linear(hidden, out_d)
+        self.activation_name = act
+
     def forward(self, x):
         return self.fc2(self.act(self.fc1(x)))
+
+    @torch.no_grad()
+    def widen(self, delta: int) -> "_VGBlock":
+        if delta <= 0:
+            return self
+        new_h = self.hidden_dim + delta
+        new_fc1 = nn.Linear(self.in_d, new_h).to(self.fc1.weight.device)
+        new_fc1.weight[: self.hidden_dim].copy_(self.fc1.weight)
+        new_fc1.bias[: self.hidden_dim].copy_(self.fc1.bias)
+        nn.init.kaiming_uniform_(new_fc1.weight[self.hidden_dim:], a=5 ** 0.5)
+        new_fc1.bias[self.hidden_dim:].zero_()
+        new_fc2 = nn.Linear(new_h, self.out_d).to(self.fc2.weight.device)
+        new_fc2.weight[:, : self.hidden_dim].copy_(self.fc2.weight)
+        new_fc2.bias.copy_(self.fc2.bias)
+        new_fc2.weight[:, self.hidden_dim:].zero_()
+        self.fc1, self.fc2, self.hidden_dim = new_fc1, new_fc2, new_h
+        return self
+
+    @torch.no_grad()
+    def prune(self, delta: int) -> "_VGBlock":
+        if delta <= 0:
+            return self
+        if delta >= self.hidden_dim:
+            raise ValueError(f"Cannot prune {delta} from hidden={self.hidden_dim}")
+        new_h = self.hidden_dim - delta
+        col_norms = self.fc2.weight.abs().sum(dim=0)
+        top = col_norms.argsort(descending=True)[:new_h]
+        new_fc1 = nn.Linear(self.in_d, new_h).to(self.fc1.weight.device)
+        new_fc1.weight.copy_(self.fc1.weight[top])
+        new_fc1.bias.copy_(self.fc1.bias[top])
+        new_fc2 = nn.Linear(new_h, self.out_d).to(self.fc2.weight.device)
+        new_fc2.weight.copy_(self.fc2.weight[:, top])
+        new_fc2.bias.copy_(self.fc2.bias)
+        self.fc1, self.fc2, self.hidden_dim = new_fc1, new_fc2, new_h
+        return self
 
 
 def h_vg_block(node, in_shapes):
@@ -230,7 +268,152 @@ def h_vg_block(node, in_shapes):
     in_d = in_shapes[0][0]
     out_d = int(node.params.get("out_dim", 64))
     h = int(node.params.get("start_hidden", 32))
-    return _VGBlock(in_d, out_d, h, node.params.get("activation", "gelu")), (out_d,)
+    m = _VGBlock(in_d, out_d, h, node.params.get("activation", "gelu"))
+    # Tag avec node id pour mutation runtime
+    m._ark_node_id = node.id
+    return m, (out_d,)
+
+
+class _ObserverModule(nn.Module):
+    """Pass-through qui calcule eff_rank / intrinsic_dim / power_slope / mean_abs."""
+    def __init__(self, metrics: list[str], buffer_size: int = 256):
+        super().__init__()
+        self.metrics = metrics
+        self.buffer_size = buffer_size
+        self.activation_buffer: list[torch.Tensor] = []
+        self.last_metrics: dict = {}
+
+    def _eff_rank(self, X: torch.Tensor) -> float:
+        Xc = X - X.mean(dim=0, keepdim=True)
+        try:
+            s = torch.linalg.svdvals(Xc.float())
+        except RuntimeError:
+            return 0.0
+        s = s[s > 1e-9]
+        if s.numel() == 0:
+            return 0.0
+        p = s / s.sum()
+        ent = -(p * (p + 1e-12).log()).sum()
+        return float(ent.exp().item())
+
+    def _intrinsic_dim(self, X: torch.Tensor, k: int = 10) -> float:
+        n = X.shape[0]
+        if n <= k:
+            return float("nan")
+        d = torch.cdist(X.float(), X.float())
+        d.fill_diagonal_(float("inf"))
+        vals, _ = d.topk(k, largest=False)
+        log_r = (vals[:, -1:].log() - vals[:, :-1].log()).clamp(min=1e-9)
+        m = (k - 1) / log_r.sum(dim=1)
+        return float(((k - 2) / (k - 1) * m.mean()).item())
+
+    def _power_slope(self, traj: torch.Tensor) -> float:
+        if traj.ndim == 2:
+            sig = traj.float().mean(dim=1)
+        else:
+            sig = traj.float().flatten()
+        T_ = sig.shape[0]
+        if T_ < 8:
+            return float("nan")
+        fft = torch.fft.rfft(sig - sig.mean()).abs()
+        p = (fft ** 2)[1:]
+        freqs = torch.arange(1, p.shape[0] + 1, dtype=sig.dtype)
+        x = freqs.log(); y = (p + 1e-12).log()
+        var = ((x - x.mean()) ** 2).sum()
+        if var.item() < 1e-9:
+            return float("nan")
+        cov = ((x - x.mean()) * (y - y.mean())).sum()
+        return float((cov / var).item())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            X = x.reshape(x.shape[0], -1) if x.ndim > 2 else x
+            metrics: dict = {}
+            if "mean_abs" in self.metrics:
+                metrics["mean_abs"] = float(X.abs().mean().item())
+            if "eff_rank" in self.metrics and X.shape[0] > 1:
+                metrics["eff_rank"] = self._eff_rank(X)
+            if "intrinsic_dim" in self.metrics and X.shape[0] > 12:
+                metrics["intrinsic_dim"] = self._intrinsic_dim(X, k=min(10, X.shape[0] - 1))
+            self.activation_buffer.append(X.detach().mean(dim=0).cpu())
+            if len(self.activation_buffer) > self.buffer_size:
+                self.activation_buffer.pop(0)
+            if "power_slope" in self.metrics and len(self.activation_buffer) >= 8:
+                try:
+                    traj = torch.stack(self.activation_buffer, dim=0)
+                    metrics["power_slope"] = self._power_slope(traj)
+                except RuntimeError:
+                    self.activation_buffer.clear()
+            self.last_metrics = metrics
+        return x
+
+
+def h_observer(node, in_shapes):
+    if len(in_shapes) != 1:
+        raise GraphCompileError("observer needs single input", node)
+    raw = node.params.get("metrics", "eff_rank,intrinsic_dim,power_slope,mean_abs")
+    metrics = [m.strip() for m in raw.split(",") if m.strip()]
+    buf = int(node.params.get("buffer_size", 256))
+    m = _ObserverModule(metrics, buf)
+    m._ark_node_id = node.id
+    return m, in_shapes[0]
+
+
+class _TriggerRule(nn.Module):
+    """Évalue condition `metric op threshold` → action mutate target_node."""
+    _OPS = {
+        "<": lambda a, b: a < b, ">": lambda a, b: a > b,
+        "<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b,
+        "==": lambda a, b: a == b, "!=": lambda a, b: a != b,
+    }
+
+    def __init__(self, metric: str, op: str, threshold: float,
+                 action_op: str, target_node: str, delta: int = 8):
+        super().__init__()
+        self.metric_name = metric
+        self.op = op
+        self.threshold = float(threshold)
+        self.action_op = action_op
+        self.target_node = target_node
+        self.delta = int(delta)
+
+    def forward(self, x):
+        return x
+
+    def evaluate(self, metrics: dict) -> dict | None:
+        if self.metric_name not in metrics:
+            return None
+        v = metrics[self.metric_name]
+        if v != v:  # NaN
+            return None
+        if self._OPS[self.op](v, self.threshold):
+            return {
+                "action": "mutate",
+                "node_id": self.target_node,
+                "op": self.action_op,
+                "delta": self.delta,
+                "triggered_by": {"metric": self.metric_name, "value": v,
+                                   "op": self.op, "threshold": self.threshold},
+            }
+        return None
+
+
+def h_trigger_rule(node, in_shapes):
+    if len(in_shapes) != 1:
+        raise GraphCompileError("trigger_rule needs single input", node)
+    target = node.params.get("target_node", "")
+    if not target:
+        raise GraphCompileError("trigger_rule: target_node param required", node)
+    m = _TriggerRule(
+        metric=node.params.get("metric", "eff_rank"),
+        op=node.params.get("op", ">"),
+        threshold=float(node.params.get("threshold", 0.0)),
+        action_op=node.params.get("action_op", "widen"),
+        target_node=target,
+        delta=int(node.params.get("delta", 8)),
+    )
+    m._ark_node_id = node.id
+    return m, in_shapes[0]
 
 
 def h_math_op(node, in_shapes):
@@ -289,14 +472,15 @@ HANDLERS = {
     "transformer_block": h_transformer_block,
     "moe_switch": h_moe_switch,
     "vg_block": h_vg_block,
+    "observer": h_observer,
+    "trigger_rule": h_trigger_rule,
     "math_op": h_math_op,
     "constant": h_constant,
     "code_line": h_code_line,
 }
 
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
-NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line",
-                      "observer", "trigger_rule"}
+NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
 
 
