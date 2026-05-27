@@ -38,22 +38,28 @@ def bench_template(name: str, n_iter: int = 5) -> dict:
     error = None
     for i in range(n_iter):
         scene = NodeScene(registry=default_registry())
+        # Récupère num_classes depuis metadata template
+        nc = payload.get("metadata", {}).get("num_classes")
         t0 = time.perf_counter()
         try:
             payload_to_scene(scene, payload)
-            cg = compile_scene(scene, num_classes=10)
+            cg = compile_scene(scene, num_classes=nc)
             t1 = time.perf_counter()
             timings_compile.append((t1 - t0) * 1000)
             n_params = sum(p.numel() for p in cg.model.parameters())
             n_modules = len(cg.model.modules_dict)
             input_shape = list(cg.input_shape)
             output_shape = list(cg.output_shape)
-            # Forward dummy
+            # Forward dummy : skip si shape contient non-int (source node)
             cg.model.eval()
-            x = torch.randn(2, *cg.input_shape)
             t2 = time.perf_counter()
             with torch.no_grad():
-                _ = cg.model(x)
+                shape_ok = all(isinstance(s, int) and s > 0 for s in cg.input_shape)
+                if shape_ok:
+                    x = torch.randn(2, *cg.input_shape)
+                    _ = cg.model(x)
+                else:
+                    _ = cg.model(None)
             t3 = time.perf_counter()
             timings_forward.append((t3 - t2) * 1000)
         except GraphCompileError as e:

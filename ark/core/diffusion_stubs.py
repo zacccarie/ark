@@ -228,7 +228,8 @@ class ControlNetApplyStub(nn.Module):
 def h_diffusion_model_loader(node, in_shapes):
     m = DiffusionModelLoaderStub(node.params.get("checkpoint", "model.safetensors"),
                                     node.params.get("device", "auto"))
-    return m, ("model_tuple",)
+    # 3 outputs via tuple-of-shapes : socket 0=model, 1=clip, 2=vae
+    return m, (("model_opaque",), ("clip_opaque",), ("vae_opaque",))
 
 
 def h_clip_text_encode(node, in_shapes):
@@ -263,7 +264,8 @@ def h_vae_encode(node, in_shapes):
 
 
 def h_load_image(node, in_shapes):
-    return LoadImageStub(node.params.get("path", "input.png")), (3, 512, 512)
+    # 2 outputs : image (3, 512, 512) + mask (1, 512, 512)
+    return LoadImageStub(node.params.get("path", "input.png")), ((3, 512, 512), (1, 512, 512))
 
 
 def h_save_image(node, in_shapes):
@@ -276,7 +278,7 @@ def h_lora_loader(node, in_shapes):
         node.params.get("lora_name", "lora.safetensors"),
         float(node.params.get("strength_model", 1.0)),
         float(node.params.get("strength_clip", 1.0)),
-    ), ("model_tuple",)
+    ), (("model_opaque",), ("clip_opaque",))
 
 
 def h_controlnet_apply(node, in_shapes):

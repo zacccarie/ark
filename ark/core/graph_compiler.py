@@ -533,7 +533,20 @@ SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
 # ============================================================
 
 class GraphModel(nn.Module):
-    def __init__(self, ordered_nodes, modules_by_id, input_id, output_id, incoming):
+    """DAG nn.Module avec support multi-output socket routing (Phase 19).
+
+    `incoming_routed[dst_id]` = list[(src_id, from_socket, to_socket)] préservant
+    ordre des connexions ET indices de socket. Permet aux nodes source qui
+    retournent tuple (diffusion_model_loader → model/clip/vae) de router le bon
+    élément vers le bon downstream.
+
+    `source_node_ids` = nodes sans incoming (input/loader/empty_latent/load_image
+    etc.) — leur forward() est appelé sans argument et leur output peut être
+    tensor OU tuple. cache[nid] stocke toujours le tensor/tuple complet.
+    """
+
+    def __init__(self, ordered_nodes, modules_by_id, input_id, output_id,
+                 incoming, incoming_routed=None, source_node_ids=None):
         super().__init__()
         self.ordered_nodes = ordered_nodes
         self.modules_dict = nn.ModuleDict(
@@ -542,16 +555,47 @@ class GraphModel(nn.Module):
         self.input_id = input_id
         self.output_id = output_id
         self.incoming = dict(incoming)
+        self.incoming_routed: dict = incoming_routed or {}
+        self.source_node_ids: set = set(source_node_ids or [input_id])
+
+    def _select_socket(self, value, idx: int):
+        """Extrait l'élément `idx` d'un output. Si value est tuple/list, sélectionne.
+        Sinon retourne value direct (idx ignoré pour single-output nodes)."""
+        if isinstance(value, (tuple, list)):
+            if idx < len(value):
+                return value[idx]
+            return value[0]
+        return value
 
     def forward(self, x):
-        cache = {self.input_id: x}
-        for nid in [n.id for n in self.ordered_nodes]:
+        cache: dict = {self.input_id: x}
+        # Lance les autres source nodes (sans incoming) qui ne sont pas l'input_id
+        for nid in self.source_node_ids:
+            if nid in cache:
+                continue
+            mod = self.modules_dict[nid] if nid in self.modules_dict else None
+            if mod is None:
+                continue
+            try:
+                cache[nid] = mod()  # source : pas d'argument
+            except TypeError:
+                # Fallback : module attend un x (legacy)
+                cache[nid] = mod(None)
+
+        for node in self.ordered_nodes:
+            nid = node.id
             if nid in cache:
                 continue
             ups = self.incoming.get(nid, [])
+            routed = self.incoming_routed.get(nid)
             if not ups:
                 continue
-            in_t = [cache[u] for u in ups]
+            if routed:
+                # Multi-input avec socket routing
+                in_t = [self._select_socket(cache[src], src_sock)
+                        for (src, src_sock, _) in routed]
+            else:
+                in_t = [cache[u] for u in ups]
             mod = self.modules_dict[nid] if nid in self.modules_dict else None
             if mod is None:
                 cache[nid] = in_t[0]
@@ -559,12 +603,18 @@ class GraphModel(nn.Module):
             if isinstance(mod, FunctionalOp):
                 cache[nid] = mod(*in_t)
             else:
-                if len(in_t) != 1:
-                    raise RuntimeError(f"Node {nid} expects 1 input, got {len(in_t)}")
-                cache[nid] = mod(in_t[0])
+                # Single-input modules : prend 1er. Sinon expand args.
+                if len(in_t) == 1:
+                    cache[nid] = mod(in_t[0])
+                else:
+                    cache[nid] = mod(*in_t)
         if self.output_id not in cache:
             raise RuntimeError(f"Output {self.output_id} not produced")
-        return cache[self.output_id]
+        out = cache[self.output_id]
+        # Final : si tuple, retourne 1er élément (sortie principale)
+        if isinstance(out, (tuple, list)):
+            return out[0]
+        return out
 
 
 class CompiledGraph:
@@ -576,19 +626,34 @@ class CompiledGraph:
 
 
 def _topo_sort_scene(scene):
-    """Construit incoming/outgoing edges depuis scene.connections + topo sort."""
+    """Construit incoming/outgoing edges depuis scene.connections + topo sort.
+
+    Phase 19 : retourne aussi `incoming_routed` qui préserve les indices socket
+    (src_socket_idx, dst_socket_idx) pour chaque arête, utile au forward.
+
+    Trie les inputs par dst_socket_idx pour respecter l'ordre attendu côté
+    handler (KSampler : model, positive, negative, latent en sockets 0,1,2,3).
+    """
     nodes = scene.nodes()
     by_id = {n.id: n for n in nodes}
     incoming = defaultdict(list)
     outgoing = defaultdict(list)
-    # Conserve l'ordre des connexions sur les inputs (important pour math_op etc.)
+    incoming_routed: dict = defaultdict(list)
     for conn in scene.connections():
         if conn.start_socket is None or conn.end_socket is None:
             continue
         src = conn.start_socket.parent_node.id
         dst = conn.end_socket.parent_node.id
+        src_idx = getattr(conn.start_socket, "index", 0)
+        dst_idx = getattr(conn.end_socket, "index", 0)
         incoming[dst].append(src)
         outgoing[src].append(dst)
+        incoming_routed[dst].append((src, src_idx, dst_idx))
+    # Sort incoming par dst_socket_idx pour ordre stable
+    for dst in incoming_routed:
+        incoming_routed[dst].sort(key=lambda t: t[2])
+        # Sync incoming dans même ordre
+        incoming[dst] = [t[0] for t in incoming_routed[dst]]
     indeg = {nid: len(incoming[nid]) for nid in by_id}
     queue = deque([nid for nid, d in indeg.items() if d == 0])
     order_ids = []
@@ -601,7 +666,7 @@ def _topo_sort_scene(scene):
                 queue.append(nxt)
     if len(order_ids) != len(by_id):
         raise GraphCompileError("Graph has a cycle or disconnected component")
-    return [by_id[nid] for nid in order_ids], incoming, outgoing
+    return [by_id[nid] for nid in order_ids], incoming, outgoing, incoming_routed
 
 
 def compile_scene(scene, num_classes: int | None = None,
@@ -619,13 +684,28 @@ def compile_scene(scene, num_classes: int | None = None,
     if not nodes:
         raise GraphCompileError("Empty graph")
 
-    ordered, incoming, outgoing = _topo_sort_scene(scene)
+    ordered, incoming, outgoing, incoming_routed = _topo_sort_scene(scene)
 
-    # Input node
+    # Phase 19 : SOURCE_TYPES = nodes sans incoming attendu (loader, latent, etc.)
+    SOURCE_TYPES = INPUT_TYPES | {
+        "diffusion_model_loader", "empty_latent_image", "load_image",
+        "webcam", "microphone", "constant", "hf_model_loader",
+        "hf_tokenizer",
+    }
+
+    # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES
     input_node = next((n for n in ordered if n.spec.name in INPUT_TYPES), None)
     if input_node is None:
-        raise GraphCompileError("Missing input node (image/tabular/text)")
+        input_node = next((n for n in ordered if n.spec.name in SOURCE_TYPES), None)
+    if input_node is None:
+        raise GraphCompileError("Missing source node (input/loader/etc.)")
     input_id = input_node.id
+
+    # Tous les source nodes (sans incoming OU type source)
+    source_node_ids = {
+        n.id for n in ordered
+        if n.spec.name in SOURCE_TYPES or not incoming.get(n.id)
+    }
 
     # Shapes propagation
     shapes_by_id: dict = {}
@@ -640,7 +720,22 @@ def compile_scene(scene, num_classes: int | None = None,
             if ntype in NON_FORWARD_TYPES:
                 continue
             in_ids = incoming.get(node.id, [])
-            in_shapes = [shapes_by_id[u] for u in in_ids if u in shapes_by_id]
+            # Phase 19 : utilise routed pour résoudre shapes par socket idx
+            routed = incoming_routed.get(node.id, [])
+            if routed:
+                in_shapes = []
+                for src_id, src_sock, _dst_sock in routed:
+                    if src_id not in shapes_by_id:
+                        continue
+                    src_shape = shapes_by_id[src_id]
+                    # Si tuple de shapes (multi-output), prend src_sock
+                    if isinstance(src_shape, tuple) and len(src_shape) > 0 and \
+                       isinstance(src_shape[0], tuple):
+                        in_shapes.append(src_shape[src_sock] if src_sock < len(src_shape) else src_shape[0])
+                    else:
+                        in_shapes.append(src_shape)
+            else:
+                in_shapes = [shapes_by_id[u] for u in in_ids if u in shapes_by_id]
             try:
                 mod, out_shape = handler(node, in_shapes)
             except GraphCompileError:
@@ -663,24 +758,36 @@ def compile_scene(scene, num_classes: int | None = None,
     if output_id is None:
         raise GraphCompileError("No output computable")
 
-    # Classifier head auto si num_classes mismatch
+    # Classifier head auto si num_classes mismatch (skip si tuple/multi-output)
     final_shape = shapes_by_id[output_id]
-    if num_classes is not None:
+    if num_classes is not None and isinstance(final_shape, tuple) and \
+       len(final_shape) > 0 and not isinstance(final_shape[0], tuple):
         if len(final_shape) != 1 or final_shape[0] != num_classes:
             flat = 1
             for s in final_shape:
-                flat *= int(s)
-            head_id = f"_auto_head_{output_id}"
-            head = nn.Sequential(nn.Flatten(start_dim=1), nn.Linear(flat, num_classes))
-            modules_by_id[head_id] = head
-            shapes_by_id[head_id] = (num_classes,)
-            incoming[head_id] = [output_id]
-            # Ajoute un pseudo-node ordered (id-only) en fin
-            class _Pseudo:
-                def __init__(self, id): self.id = id
-            ordered.append(_Pseudo(head_id))
-            output_id = head_id
-            final_shape = (num_classes,)
+                if isinstance(s, int) and s > 0:
+                    flat *= int(s)
+                else:
+                    flat = None
+                    break
+            if flat is not None:
+                head_id = f"_auto_head_{output_id}"
+                head = nn.Sequential(nn.Flatten(start_dim=1), nn.Linear(flat, num_classes))
+                modules_by_id[head_id] = head
+                shapes_by_id[head_id] = (num_classes,)
+                incoming[head_id] = [output_id]
+                incoming_routed[head_id] = [(output_id, 0, 0)]
+                class _Pseudo:
+                    def __init__(self, id): self.id = id
+                ordered.append(_Pseudo(head_id))
+                output_id = head_id
+                final_shape = (num_classes,)
 
-    model = GraphModel(ordered, modules_by_id, input_id, output_id, incoming)
-    return CompiledGraph(model, shapes_by_id[input_id], final_shape, num_classes)
+    model = GraphModel(ordered, modules_by_id, input_id, output_id,
+                         incoming, incoming_routed=dict(incoming_routed),
+                         source_node_ids=source_node_ids)
+    # input_shape : si tuple-of-tuples (multi-output source), prend 1ère
+    in_sh = shapes_by_id[input_id]
+    if isinstance(in_sh, tuple) and len(in_sh) > 0 and isinstance(in_sh[0], tuple):
+        in_sh = in_sh[0]
+    return CompiledGraph(model, in_sh, final_shape, num_classes)
