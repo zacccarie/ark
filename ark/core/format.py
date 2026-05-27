@@ -74,6 +74,12 @@ def payload_to_scene(scene, payload: dict) -> None:
                 pass
         id_map[nd["id"]] = node.id
 
+    # Remap params référençant des node ids (e.g. trigger_rule.target_node)
+    for node in scene.nodes():
+        for k, v in list(node.params.items()):
+            if isinstance(v, str) and v in id_map:
+                node.params[k] = id_map[v]
+
     # Rebuild connections
     from ark.ui.node_editor.connection_item import ConnectionItem
     nodes_by_id = {n.id: n for n in scene.nodes()}

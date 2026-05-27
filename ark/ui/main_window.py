@@ -23,6 +23,7 @@ from ark.ui.panels.terminal_panel import TerminalPanel
 from ark.ui.node_editor.view import NodeEditorView
 from ark.ui.node_editor.scene import NodeScene
 from ark.nodes.registry import default_registry
+from ark.core.templates import TEMPLATES_LIST, get_template
 
 
 class MainWindow(QMainWindow):
@@ -69,6 +70,16 @@ class MainWindow(QMainWindow):
         a_save.triggered.connect(self._on_save)
         file_menu.addAction(a_save)
 
+        file_menu.addSeparator()
+        # Templates
+        tpl_menu = file_menu.addMenu("Nouveau depuis template")
+        for tpl_name, tpl_label in TEMPLATES_LIST:
+            tpl_menu.addAction(tpl_label, lambda n=tpl_name: self._load_template(n))
+        file_menu.addSeparator()
+        # Export
+        exp_menu = file_menu.addMenu("Exporter")
+        exp_menu.addAction("Python standalone (.py)", self._on_export_python)
+        exp_menu.addAction("ONNX (.onnx)", self._on_export_onnx)
         file_menu.addSeparator()
         a_quit = QAction("Quitter", self)
         a_quit.setShortcut(QKeySequence.StandardKey.Quit)
@@ -405,3 +416,51 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "À propos d'ARK",
                           "<h2>ARK</h2><p>Architecture builder node-based.</p>"
                           "<p>Refonte Python (PySide6) de ai-arch-builder.</p>")
+
+    def _load_template(self, name: str):
+        payload = get_template(name)
+        if payload is None:
+            QMessageBox.warning(self, "Template", f"Template '{name}' introuvable")
+            return
+        from ark.core.format import payload_to_scene
+        try:
+            payload_to_scene(self.scene, payload)
+            self.undo_stack.clear()
+            self.statusBar().showMessage(f"Template chargé : {name}", 3000)
+            self.terminal.append_log(f"[template] {name} — "
+                                       f"{len(self.scene.nodes())} nodes, "
+                                       f"{len(self.scene.connections())} conns")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur template", str(e))
+
+    def _on_export_python(self):
+        if not self.scene.nodes():
+            QMessageBox.information(self, "Export", "Graphe vide")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export Python", "ark_model.py",
+                                                "Python (*.py)")
+        if not path:
+            return
+        try:
+            from ark.core.export import export_python
+            out = export_python(self.scene, path)
+            self.statusBar().showMessage(f"Exporté : {out}", 4000)
+            self.terminal.append_log(f"[export.py] {out}")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur export", str(e))
+
+    def _on_export_onnx(self):
+        if not self.scene.nodes():
+            QMessageBox.information(self, "Export", "Graphe vide")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export ONNX", "ark_model.onnx",
+                                                "ONNX (*.onnx)")
+        if not path:
+            return
+        try:
+            from ark.core.export import export_onnx
+            out = export_onnx(self.scene, path, num_classes=10)
+            self.statusBar().showMessage(f"Exporté : {out}", 4000)
+            self.terminal.append_log(f"[export.onnx] {out}")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur export ONNX", str(e))

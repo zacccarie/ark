@@ -479,6 +479,17 @@ HANDLERS = {
     "code_line": h_code_line,
 }
 
+# Devices (Phase 6) — lazy imports
+def _lazy_register_devices():
+    try:
+        from ark.core.devices import h_webcam, h_microphone
+        HANDLERS["webcam"] = h_webcam
+        HANDLERS["microphone"] = h_microphone
+    except Exception:
+        pass
+
+_lazy_register_devices()
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

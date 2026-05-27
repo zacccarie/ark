@@ -61,8 +61,9 @@ class NodeItem(QGraphicsItem):
         n_sockets = max(len(self.input_sockets), len(self.output_sockets))
         socket_h = max(n_sockets, 1) * self.ROW_H
         param_h = len(self.spec.params) * self.PARAM_H
-        thumb_h = 60 if self.spec.has_thumbnail else 0
-        return self.HEADER_H + socket_h + param_h + thumb_h + self.PADDING_BOTTOM
+        thumb_h = 58 if self.spec.has_thumbnail else 0
+        err_h = 16 if self.error else 0
+        return self.HEADER_H + socket_h + param_h + thumb_h + err_h + self.PADDING_BOTTOM
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, self.width, self.height + self.HANDLE_SIZE)
@@ -151,6 +152,13 @@ class NodeItem(QGraphicsItem):
                              Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                              txt)
 
+        # Thumbnail (Phase 11) — affichage compact preview
+        if self.spec.has_thumbnail:
+            n_sockets = max(len(self.input_sockets), len(self.output_sockets))
+            thumb_y = self.HEADER_H + n_sockets * self.ROW_H + len(self.spec.params) * self.PARAM_H + 4
+            thumb_rect = QRectF(8, thumb_y, self.width - 16, 50)
+            self._paint_thumbnail(painter, thumb_rect)
+
         # Error message bar
         if self.error:
             err_y = self.height - 14
@@ -164,6 +172,124 @@ class NodeItem(QGraphicsItem):
         h_rect = QRectF(self.width - self.HANDLE_SIZE, self.height,
                           self.HANDLE_SIZE, self.HANDLE_SIZE)
         painter.fillRect(h_rect, QColor(T.BORDER_DEFAULT))
+
+    def _paint_thumbnail(self, painter, rect):
+        """Render mini-aperçu selon type de node."""
+        # Background placeholder
+        painter.setPen(QPen(QColor(T.BORDER_SUBTLE), 1))
+        painter.setBrush(QBrush(QColor(T.BG_DEEP)))
+        painter.drawRect(rect)
+
+        if self.spec.name in ("load_image", "save_image"):
+            self._paint_image_placeholder(painter, rect)
+        elif self.spec.name == "webcam":
+            self._paint_webcam_placeholder(painter, rect)
+        elif self.spec.name == "microphone":
+            self._paint_audio_waveform(painter, rect)
+        elif self.spec.name == "observer":
+            self._paint_observer_sparkline(painter, rect)
+        elif self.spec.name in ("plot_scatter", "plot_line"):
+            self._paint_plot_placeholder(painter, rect)
+        else:
+            painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter,
+                             f"⟨ preview {self.spec.name} ⟩")
+
+    def _paint_image_placeholder(self, painter, rect):
+        # Damier subtil pour signaler "image"
+        from PySide6.QtCore import QRectF as _QR
+        tile = 6
+        c1 = QColor(T.BG_PANEL)
+        c2 = QColor(T.BG_HIGHLIGHT)
+        n_x = int(rect.width()) // tile
+        n_y = int(rect.height()) // tile
+        for i in range(n_x):
+            for j in range(n_y):
+                col = c1 if (i + j) % 2 == 0 else c2
+                painter.fillRect(_QR(rect.x() + i * tile, rect.y() + j * tile,
+                                       tile, tile), col)
+        painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "🖼 image")
+
+    def _paint_webcam_placeholder(self, painter, rect):
+        from PySide6.QtCore import QRectF as _QR
+        painter.fillRect(rect, QColor(T.BG_OVERLAY))
+        # cercle rouge "rec"
+        painter.setBrush(QBrush(QColor(T.ACCENT)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        cx = rect.x() + 14
+        cy = rect.y() + rect.height() / 2
+        painter.drawEllipse(QPointF(cx, cy), 4, 4)
+        painter.setPen(QPen(QColor(T.FG_PRIMARY)))
+        painter.drawText(_QR(rect.x() + 24, rect.y(), rect.width() - 24, rect.height()),
+                          Qt.AlignmentFlag.AlignVCenter,
+                          f"WEBCAM · {self.params.get('fps', 30)}fps")
+
+    def _paint_audio_waveform(self, painter, rect):
+        # Fake waveform synthétique
+        from PySide6.QtGui import QPainterPath
+        import math
+        path = QPainterPath()
+        n = 40
+        for i in range(n):
+            t = i / n
+            x = rect.x() + 4 + (rect.width() - 8) * t
+            amp = math.sin(t * math.pi * 8) * math.cos(t * math.pi * 3) * 12
+            y = rect.y() + rect.height() / 2 + amp
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        painter.setPen(QPen(QColor(T.ACCENT), 1.2))
+        painter.drawPath(path)
+
+    def _paint_observer_sparkline(self, painter, rect):
+        # Mini sparkline depuis _metric_history (eff_rank)
+        from PySide6.QtGui import QPainterPath
+        hist = getattr(self, "_metric_history", None)
+        if not hist:
+            painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "◉ no live data")
+            return
+        vals = [m.get("eff_rank") for m in hist if m.get("eff_rank") is not None]
+        if not vals:
+            painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "◉ ...")
+            return
+        vmin, vmax = min(vals), max(vals)
+        rng = max(vmax - vmin, 1e-6)
+        path = QPainterPath()
+        n = len(vals)
+        for i, v in enumerate(vals):
+            x = rect.x() + 4 + (rect.width() - 8) * (i / max(n - 1, 1))
+            y = rect.bottom() - 4 - (v - vmin) / rng * (rect.height() - 8)
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        painter.setPen(QPen(QColor(T.ACCENT), 1.4))
+        painter.drawPath(path)
+        # Légende last value
+        painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+        painter.drawText(rect.adjusted(4, 0, 0, 0), Qt.AlignmentFlag.AlignTop,
+                         f"eff_rank={vals[-1]:.1f}")
+
+    def _paint_plot_placeholder(self, painter, rect):
+        # Mini axes + dots aléatoires fixes (déterministe par id)
+        from PySide6.QtCore import QRectF as _QR
+        painter.setPen(QPen(QColor(T.BORDER_DEFAULT), 1))
+        painter.drawLine(int(rect.x() + 8), int(rect.bottom() - 4),
+                          int(rect.right() - 4), int(rect.bottom() - 4))
+        painter.drawLine(int(rect.x() + 8), int(rect.y() + 4),
+                          int(rect.x() + 8), int(rect.bottom() - 4))
+        import random
+        rng = random.Random(self.id)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(T.ACCENT)))
+        for _ in range(15):
+            px = rect.x() + 10 + rng.random() * (rect.width() - 14)
+            py = rect.y() + 6 + rng.random() * (rect.height() - 12)
+            painter.drawEllipse(QPointF(px, py), 1.5, 1.5)
 
     # ------------------------------------------------------------
     # Interaction : hover, double-click toggle bypass, resize
