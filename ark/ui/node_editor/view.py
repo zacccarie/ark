@@ -1,10 +1,12 @@
 """ARK QGraphicsView : zoom souris, pan middle/space-drag, double-clic search."""
 from __future__ import annotations
 from PySide6.QtCore import Qt, QPointF, QPoint
-from PySide6.QtGui import QPainter, QKeyEvent, QMouseEvent, QWheelEvent
-from PySide6.QtWidgets import QGraphicsView
+from PySide6.QtGui import QPainter, QKeyEvent, QMouseEvent, QWheelEvent, QAction
+from PySide6.QtWidgets import QGraphicsView, QMenu
 
 from ark.ui.node_editor.search_overlay import SearchOverlay
+from ark.ui.node_editor.socket_item import SocketItem, types_compatible
+from ark.ui.node_editor.connection_item import ConnectionItem
 
 
 class NodeEditorView(QGraphicsView):
@@ -26,6 +28,10 @@ class NodeEditorView(QGraphicsView):
         self._panning = False
         self._pan_anchor = QPoint()
         self._search: SearchOverlay | None = None
+        # Drag connection state
+        self._dragging_conn: ConnectionItem | None = None
+        self._drag_start_socket: SocketItem | None = None
+        self._drag_hover_socket: SocketItem | None = None
 
     # ----- Zoom -----
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -44,6 +50,17 @@ class NodeEditorView(QGraphicsView):
             self._start_pan(event.position().toPoint())
             event.accept()
             return
+        if event.button() == Qt.MouseButton.RightButton:
+            # Right-click context menu géré dans contextMenuEvent
+            super().mousePressEvent(event)
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Détecte si on a cliqué sur un socket → démarre drag connection
+            item = self.itemAt(event.position().toPoint())
+            if isinstance(item, SocketItem):
+                self._start_drag_connection(item, event)
+                event.accept()
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -54,11 +71,29 @@ class NodeEditorView(QGraphicsView):
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
             event.accept()
             return
+        if self._dragging_conn is not None:
+            scene_pos = self.mapToScene(event.position().toPoint())
+            self._dragging_conn.set_dragging_end(scene_pos)
+            # Highlight survol socket cible
+            target = self.itemAt(event.position().toPoint())
+            if self._drag_hover_socket and self._drag_hover_socket is not target:
+                self._drag_hover_socket.set_highlight(False)
+                self._drag_hover_socket = None
+            if isinstance(target, SocketItem) and target is not self._drag_start_socket:
+                compatible = self._can_connect(self._drag_start_socket, target)
+                target.set_highlight(True, reject=not compatible)
+                self._drag_hover_socket = target
+            event.accept()
+            return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.MiddleButton and self._panning:
             self._end_pan()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging_conn is not None:
+            self._finish_drag_connection(event)
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -135,3 +170,101 @@ class NodeEditorView(QGraphicsView):
         for it in scene.selectedItems():
             if isinstance(it, NodeItem):
                 scene.remove_node(it)
+            elif isinstance(it, ConnectionItem):
+                scene.remove_connection(it)
+
+    # ----- Drag connection -----
+    def _start_drag_connection(self, socket: SocketItem, event: QMouseEvent):
+        scene = self.scene()
+        if scene is None:
+            return
+        conn = ConnectionItem(start_socket=socket)
+        scene.addItem(conn)
+        scene_pos = self.mapToScene(event.position().toPoint())
+        conn.set_dragging_end(scene_pos)
+        self._dragging_conn = conn
+        self._drag_start_socket = socket
+
+    def _can_connect(self, src: SocketItem | None, dst: SocketItem | None) -> bool:
+        if src is None or dst is None or src is dst:
+            return False
+        if src.parent_node is dst.parent_node:
+            return False
+        # Doit relier output → input (peu importe ordre du drag)
+        if src.is_input == dst.is_input:
+            return False
+        # Type-check (orientation arbitraire, on prend src→dst)
+        out_sock = src if not src.is_input else dst
+        in_sock = dst if dst.is_input else src
+        if not types_compatible(out_sock.socket_type, in_sock.socket_type):
+            return False
+        # Input ne peut avoir qu'1 connexion (sauf si multi_input du node)
+        if in_sock.connections and not in_sock.parent_node.spec.is_multi_input:
+            return False
+        return True
+
+    def _finish_drag_connection(self, event: QMouseEvent):
+        scene = self.scene()
+        conn = self._dragging_conn
+        start = self._drag_start_socket
+        target = self.itemAt(event.position().toPoint())
+        # Reset highlight
+        if self._drag_hover_socket:
+            self._drag_hover_socket.set_highlight(False)
+            self._drag_hover_socket = None
+        if isinstance(target, SocketItem) and self._can_connect(start, target):
+            # Établit la connexion : start_socket = output, end_socket = input
+            if not start.is_input:
+                conn.start_socket = start
+                conn.end_socket = target
+            else:
+                conn.start_socket = target
+                conn.end_socket = start
+            conn.start_socket.add_connection(conn)
+            conn.end_socket.add_connection(conn)
+            scene._connections.append(conn)
+            conn.update_path()
+            # Multi-input : ajoute un nouveau slot si node le supporte
+            if conn.end_socket.parent_node.spec.is_multi_input:
+                conn.end_socket.parent_node.add_multi_input_slot()
+        else:
+            scene.removeItem(conn)
+        self._dragging_conn = None
+        self._drag_start_socket = None
+
+    # ----- Context menu -----
+    def contextMenuEvent(self, event):
+        scene = self.scene()
+        if scene is None:
+            return
+        item = self.itemAt(event.pos())
+        menu = QMenu(self)
+        from ark.ui.node_editor.node_item import NodeItem
+        if isinstance(item, NodeItem):
+            menu.addAction("Bypass on/off", lambda n=item: self._toggle_bypass(n))
+            menu.addAction("Renommer...", lambda: None)
+            menu.addSeparator()
+            menu.addAction("Dupliquer", lambda n=item: self._duplicate_node(n))
+            menu.addAction("Supprimer", lambda n=item: scene.remove_node(n))
+        elif isinstance(item, ConnectionItem):
+            menu.addAction("Supprimer connexion", lambda c=item: scene.remove_connection(c))
+        else:
+            menu.addAction("Rechercher node...", lambda p=event.pos(): self.open_search_overlay(p))
+            menu.addSeparator()
+            menu.addAction("Tout effacer", scene.clear_graph)
+        menu.exec(event.globalPos())
+
+    def _toggle_bypass(self, node):
+        node.bypass = not node.bypass
+        node.update()
+
+    def _duplicate_node(self, node):
+        scene = self.scene()
+        if scene is None:
+            return
+        new = scene.create_node(node.spec.name,
+                                  x=node.pos().x() + 30,
+                                  y=node.pos().y() + 30)
+        if new:
+            for k, v in node.params.items():
+                new.set_param(k, v)

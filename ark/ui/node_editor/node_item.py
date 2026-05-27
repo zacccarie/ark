@@ -1,12 +1,12 @@
 """NodeItem — node visuel + sockets + handles redim + bypass."""
 from __future__ import annotations
 from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QBrush, QPen, QColor, QFont, QPainterPath
+from PySide6.QtGui import QBrush, QPen, QColor, QFont, QPainterPath, QCursor
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsTextItem
 
 from ark.ui import design_tokens as T
 from ark.ui.node_editor.socket_item import SocketItem
-from ark.nodes.registry import NodeSpec
+from ark.nodes.registry import NodeSpec, SocketSpec
 import uuid
 
 
@@ -47,6 +47,11 @@ class NodeItem(QGraphicsItem):
             sock = SocketItem(self, s.label, s.socket_type, is_input=False, index=i)
             self.output_sockets.append(sock)
         self._layout_sockets()
+
+        # Resize state
+        self._resizing = False
+        self._resize_start_w = 0
+        self._resize_start_pos = QPointF()
 
     # ------------------------------------------------------------
     # Size / layout
@@ -196,3 +201,79 @@ class NodeItem(QGraphicsItem):
     def set_error(self, msg: str | None):
         self.error = msg
         self.update()
+
+    # ------------------------------------------------------------
+    # Multi-input dynamique (vague residual_add, concat)
+    # ------------------------------------------------------------
+    def add_multi_input_slot(self):
+        """Ajoute un nouveau slot d'entrée si tous les existants sont connectés.
+
+        Type pris depuis le 1er socket (ou 'any' si vide).
+        """
+        if not self.spec.is_multi_input:
+            return
+        # Ne crée un nouveau que si tous les existants sont connectés
+        unconnected = [s for s in self.input_sockets if not s.connections]
+        if unconnected:
+            return
+        # Type ref
+        sock_type = self.input_sockets[0].socket_type if self.input_sockets else "any"
+        idx = len(self.input_sockets)
+        label = chr(ord('a') + idx) if idx < 26 else f"in{idx}"
+        new_sock = SocketItem(self, label, sock_type, is_input=True, index=idx)
+        self.input_sockets.append(new_sock)
+        # Update spec.inputs aussi (pour rendu)
+        self.spec.inputs.append(SocketSpec(label, sock_type))
+        self._layout_sockets()
+        self.prepareGeometryChange()
+        self.update()
+
+    # ------------------------------------------------------------
+    # Resize handle (corner BR)
+    # ------------------------------------------------------------
+    def _in_resize_handle(self, local_pos: QPointF) -> bool:
+        return (local_pos.x() >= self.width - self.HANDLE_SIZE
+                and local_pos.y() >= self.height - 2
+                and local_pos.y() <= self.height + self.HANDLE_SIZE)
+
+    def mousePressEvent(self, event):
+        if self._in_resize_handle(event.pos()):
+            self._resizing = True
+            self._resize_start_w = self.width
+            self._resize_start_pos = event.scenePos()
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._resizing:
+            dx = event.scenePos().x() - self._resize_start_pos.x()
+            new_w = max(140, int(self._resize_start_w + dx))
+            if new_w != self.width:
+                self.prepareGeometryChange()
+                self.width = new_w
+                self._layout_sockets()
+                # Update connections liées (output socket position changes)
+                for sock in self.output_sockets:
+                    for conn in sock.connections:
+                        conn.update_path()
+                self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._resizing:
+            self._resizing = False
+            self.unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def hoverMoveEvent(self, event):
+        if self._in_resize_handle(event.pos()):
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        else:
+            self.unsetCursor()
+        super().hoverMoveEvent(event)
