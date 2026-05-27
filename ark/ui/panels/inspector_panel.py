@@ -75,10 +75,21 @@ class InspectorPanel(QWidget):
                     self._metric_chart.push_metrics(m)
         else:
             self._chart_host.hide()
+        # Tooltip global sur le titre = description du node
+        if node.spec.description:
+            self.title.setToolTip(node.spec.description)
+            self.subtitle.setToolTip(node.spec.description)
         for p in node.spec.params:
             w = self._build_param_widget(p, node.params.get(p.name, p.default), node)
             if w:
-                self._form.addRow(p.name + " :", w)
+                help_txt = node.spec.param_help.get(p.name, "") if node.spec.param_help else ""
+                if help_txt:
+                    w.setToolTip(help_txt)
+                from PySide6.QtWidgets import QLabel as _QL
+                label = _QL(p.name + " :")
+                if help_txt:
+                    label.setToolTip(help_txt)
+                self._form.addRow(label, w)
 
     def push_live_metrics(self, node_id: str, metrics: dict):
         """Push depuis trainer.observations vers chart si node sélectionné."""

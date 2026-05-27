@@ -133,6 +133,12 @@ class MainWindow(QMainWindow):
         run_menu.addAction(a_train)
 
         help_menu = menubar.addMenu("Aide")
+        a_glossary = QAction("Glossaire…", self)
+        a_glossary.setShortcut(QKeySequence("F1"))
+        a_glossary.setToolTip("Définitions des concepts ARK (ML, architecture, observation, diffusion).")
+        a_glossary.triggered.connect(self._on_open_glossary)
+        help_menu.addAction(a_glossary)
+        help_menu.addSeparator()
         help_menu.addAction("À propos d'ARK", self._on_about)
 
     # ------------------------------------------------------------
@@ -143,11 +149,18 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         tb.setIconSize(QSize(16, 16))
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
-        tb.addAction("▶ Compiler", self._on_compile)
-        tb.addAction("⏵ Entraîner", self._on_train)
-        tb.addAction("■ Stop", self._on_stop)
+        a_c = tb.addAction("▶ Compiler", self._on_compile)
+        a_c.setToolTip("Compile le graphe en nn.Module PyTorch.\nRaccourci : Ctrl+R")
+        a_t = tb.addAction("⏵ Entraîner", self._on_train)
+        a_t.setToolTip("Lance l'entraînement sur le modèle compilé (QThread).\nRaccourci : Ctrl+T")
+        a_s = tb.addAction("■ Stop", self._on_stop)
+        a_s.setToolTip("Interrompt l'entraînement en cours.")
         tb.addSeparator()
-        tb.addAction("⌕ Rechercher node", self._on_search)
+        a_r = tb.addAction("⌕ Rechercher node", self._on_search)
+        a_r.setToolTip("Recherche fuzzy dans le registry (double-clic canvas).")
+        tb.addSeparator()
+        a_g = tb.addAction("? Glossaire", self._on_open_glossary)
+        a_g.setToolTip("Définitions des concepts ARK.\nRaccourci : F1")
 
     # ------------------------------------------------------------
     # Status bar
@@ -523,6 +536,18 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "À propos d'ARK",
                           "<h2>ARK</h2><p>Architecture builder node-based.</p>"
                           "<p>Refonte Python (PySide6) de ai-arch-builder.</p>")
+
+    def _on_open_glossary(self, initial_term: str | None = None):
+        """Ouvre le glossaire (non-modal). Accept optionnellement un terme initial."""
+        from ark.ui.dialogs.glossary_dialog import GlossaryDialog
+        if getattr(self, "_glossary_dlg", None) is not None and self._glossary_dlg.isVisible():
+            if initial_term:
+                self._glossary_dlg.select_term(initial_term)
+            self._glossary_dlg.raise_()
+            self._glossary_dlg.activateWindow()
+            return
+        self._glossary_dlg = GlossaryDialog(self, initial_term=initial_term)
+        self._glossary_dlg.show()
 
     def _on_browse_templates(self):
         from ark.ui.dialogs.templates_browser import TemplatesBrowser

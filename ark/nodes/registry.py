@@ -41,6 +41,7 @@ class NodeSpec:
     description: str = ""
     has_thumbnail: bool = False
     is_multi_input: bool = False  # si True, chaque connexion ajoute un connecteur
+    param_help: dict = field(default_factory=dict)  # name → tooltip explication
 
 
 class NodeRegistry:
@@ -76,20 +77,24 @@ def default_registry() -> NodeRegistry:
         name="image_input", title="Image Input", category="Input",
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("shape", "str", "[1, 28, 28]")],
-        description="Tenseur image (C, H, W).",
+        description="Tenseur image (C, H, W). Source du graphe.",
+        param_help={"shape": "Forme du tenseur sans le batch — JSON list [C, H, W]. Ex. [3, 224, 224] pour RGB 224×224."},
     ))
     r.register(NodeSpec(
         name="tabular_input", title="Tabular Input", category="Input",
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("features", "int", 32, min=1, max=10000)],
-        description="Vecteur de features (N,).",
+        description="Vecteur de features (N,). Pour données tabulaires (CSV, embeddings).",
+        param_help={"features": "Dimension N du vecteur d'entrée."},
     ))
     r.register(NodeSpec(
         name="text_input", title="Text Input", category="Input",
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("max_length", "int", 64),
                  ParamSpec("embed_dim", "int", 128)],
-        description="Séquence (T, D) après embedding.",
+        description="Séquence (T, D) après embedding. Tokens texte → tenseur 2D.",
+        param_help={"max_length": "Longueur max de la séquence T (tokens).",
+                    "embed_dim": "Dimension D de l'embedding par token."},
     ))
 
     # ---------- Neural ----------
@@ -103,7 +108,12 @@ def default_registry() -> NodeRegistry:
                        options=["none", "relu", "gelu", "tanh", "sigmoid", "softmax"]),
             ParamSpec("dropout", "float", 0.0, min=0.0, max=1.0),
         ],
-        description="Linear(in, out) + activation + dropout optionnel.",
+        description="Linear(in, out) + activation + dropout optionnel. Couche fully-connected classique.",
+        param_help={
+            "neurons": "Nombre d'unités en sortie (dimension cachée).",
+            "activation": "Fonction non-linéaire post-Linear. relu = max(0,x), gelu = lisse, softmax = proba.",
+            "dropout": "Probabilité de mise à zéro d'une unité durant le training. Régularisation. 0 = pas de dropout.",
+        },
     ))
     r.register(NodeSpec(
         name="conv2d", title="Conv2D", category="Neural",
@@ -115,6 +125,12 @@ def default_registry() -> NodeRegistry:
             ParamSpec("activation", "choice", "relu",
                        options=["none", "relu", "gelu", "tanh"]),
         ],
+        description="Convolution 2D — extraction features spatiales. Cœur des CNN.",
+        param_help={
+            "filters": "Nombre de canaux de sortie (feature maps).",
+            "kernel_size": "Taille du noyau carré (3 = 3×3). Impair conseillé.",
+            "activation": "Non-linéarité post-convolution.",
+        },
     ))
     r.register(NodeSpec(
         name="normalize", title="Normalize", category="Neural",
@@ -122,12 +138,16 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("kind", "choice", "batchnorm",
                             options=["batchnorm", "layernorm", "groupnorm"])],
+        description="Normalisation des activations. Stabilise et accélère le training.",
+        param_help={"kind": "batchnorm = sur batch (CNN), layernorm = par échantillon (Transformer), groupnorm = par groupes de canaux."},
     ))
     r.register(NodeSpec(
         name="attention", title="Multi-Head Attention", category="Neural",
         inputs=[SocketSpec("in", "tensor")],
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("n_heads", "int", 4, min=1, max=32)],
+        description="Self-attention multi-têtes. Q·Kᵀ/√d → softmax → ·V. Cœur des Transformers.",
+        param_help={"n_heads": "Nombre de têtes parallèles. Doit diviser d_model."},
     ))
     r.register(NodeSpec(
         name="transformer_block", title="Transformer Block", category="Neural",
@@ -135,12 +155,18 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("n_heads", "int", 4),
                  ParamSpec("d_ff", "int", 256)],
+        description="Bloc Transformer : MHA + FFN + résiduels + LayerNorm. Architecture standard GPT/BERT.",
+        param_help={
+            "n_heads": "Nombre de têtes de l'attention.",
+            "d_ff": "Dimension cachée du feed-forward interne (typiquement 4× d_model).",
+        },
     ))
     r.register(NodeSpec(
         name="residual_add", title="Residual Add", category="Neural",
         inputs=[SocketSpec("a", "tensor"), SocketSpec("b", "tensor")],
         outputs=[SocketSpec("out", "tensor")],
         is_multi_input=True,
+        description="Addition résiduelle out = a + b (ResNet, Transformer). Évite le vanishing gradient.",
     ))
     r.register(NodeSpec(
         name="moe_switch", title="MoE Switch", category="Neural",
@@ -148,6 +174,11 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("out", "tensor")],
         params=[ParamSpec("n_experts", "int", 4, min=2, max=64),
                  ParamSpec("d_out", "int", 128)],
+        description="Mixture of Experts — Switch Transformer. Router top-1 → un expert activé par token. Sparse, scaling efficient.",
+        param_help={
+            "n_experts": "Nombre d'experts FFN en parallèle.",
+            "d_out": "Dimension de sortie de chaque expert.",
+        },
     ))
     r.register(NodeSpec(
         name="vg_block", title="VG Block (mutable)", category="Neural",
@@ -157,7 +188,12 @@ def default_registry() -> NodeRegistry:
                  ParamSpec("out_dim", "int", 64),
                  ParamSpec("activation", "choice", "gelu",
                              options=["relu", "gelu", "tanh"])],
-        description="Bloc MLP mutable runtime (widen/prune).",
+        description="Bloc MLP mutable runtime (widen/prune). Compatible Net2Net function-preserving. Cœur des architectures auto-modifiantes.",
+        param_help={
+            "start_hidden": "Largeur initiale cachée (croît via widen runtime).",
+            "out_dim": "Dimension de sortie fixe.",
+            "activation": "Non-linéarité interne.",
+        },
     ))
 
     # ---------- Math ----------
@@ -167,12 +203,15 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("out", "number")],
         params=[ParamSpec("op", "choice", "add",
                             options=["add", "sub", "mul", "div", "pow", "min", "max", "mod"])],
-        description="Opération arithmétique élémentaire. Ordre des entrées sensible.",
+        description="Opération arithmétique élémentaire. Ordre des entrées sensible (a op b).",
+        param_help={"op": "add: a+b, sub: a-b, mul: a*b, div: a/b, pow: a^b, mod: a%b."},
     ))
     r.register(NodeSpec(
         name="constant", title="Constant", category="Math",
         outputs=[SocketSpec("out", "number")],
         params=[ParamSpec("value", "float", 1.0)],
+        description="Valeur scalaire constante. Source du graphe.",
+        param_help={"value": "Valeur numérique constante émise."},
     ))
 
     # ---------- Code ----------
@@ -182,7 +221,8 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("out", "any")],
         params=[ParamSpec("code", "multiline",
                             "# Python expression — `x` est l'input\nresult = x")],
-        description="Exécute une ligne (ou bloc) Python sur l'input.",
+        description="Exécute une ligne (ou bloc) Python sur l'input. Variable `x` = entrée, `result` = sortie.",
+        param_help={"code": "Bloc Python. `x` est l'input. Assignez `result` à la valeur de sortie."},
     ))
 
     # ---------- Observe / Act ----------
@@ -194,6 +234,11 @@ def default_registry() -> NodeRegistry:
                             "eff_rank,intrinsic_dim,power_slope,mean_abs"),
                  ParamSpec("buffer_size", "int", 256)],
         has_thumbnail=True,
+        description="Mesure non-intrusive sur les activations (passthrough). Émet metrics → trigger.",
+        param_help={
+            "metrics": "Liste CSV de métriques : eff_rank (entropie spectrale), intrinsic_dim (Levina-Bickel), power_slope (FFT log-log), mean_abs (magnitude moyenne).",
+            "buffer_size": "Taille du buffer circulaire (nombre d'observations conservées).",
+        },
     ))
     r.register(NodeSpec(
         name="trigger_rule", title="Trigger Rule", category="Observe",
@@ -207,6 +252,15 @@ def default_registry() -> NodeRegistry:
                              options=["widen", "prune"]),
                  ParamSpec("target_node", "str", ""),
                  ParamSpec("delta", "int", 8)],
+        description="Règle conditionnelle : si metric op threshold → mutate target_node. Cœur de l'architecture auto-modifiante.",
+        param_help={
+            "metric": "Nom de la métrique observer à surveiller.",
+            "op": "Opérateur de comparaison.",
+            "threshold": "Seuil déclencheur.",
+            "action_op": "widen = élargir (Net2Net), prune = élaguer.",
+            "target_node": "ID du node cible (typiquement VG Block).",
+            "delta": "Amplitude de la mutation (nombre d'unités à ajouter/retirer).",
+        },
     ))
 
     # ---------- Viz ----------
@@ -216,12 +270,14 @@ def default_registry() -> NodeRegistry:
                  SocketSpec("color", "any")],
         outputs=[],
         has_thumbnail=True,
+        description="Nuage de points 2D. x/y obligatoires, color optionnel.",
     ))
     r.register(NodeSpec(
         name="plot_line", title="Plot Line", category="Viz",
         inputs=[SocketSpec("series", "tensor")],
         outputs=[],
         has_thumbnail=True,
+        description="Courbe 1D temporelle. Affiche le tenseur d'entrée comme série.",
     ))
 
     # ---------- Optim/Loss ----------
@@ -231,11 +287,18 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("learning_rate", "float", 1e-3, min=1e-6, max=1.0),
                  ParamSpec("beta1", "float", 0.9),
                  ParamSpec("beta2", "float", 0.999)],
+        description="Optimiseur Adam (Adaptive Moment Estimation). Combine momentum + RMSprop. Default robuste.",
+        param_help={
+            "learning_rate": "Taux d'apprentissage (lr). Typique 1e-3 pour Adam.",
+            "beta1": "Décroissance du moment 1 (gradient). Typique 0.9.",
+            "beta2": "Décroissance du moment 2 (gradient²). Typique 0.999.",
+        },
     ))
     r.register(NodeSpec(
         name="cross_entropy", title="Cross-Entropy Loss", category="Training",
         inputs=[SocketSpec("logits", "tensor"), SocketSpec("targets", "tensor")],
         outputs=[SocketSpec("loss", "number")],
+        description="Loss classification multi-classes. -log(softmax(logits)[target]). Stable numérique.",
     ))
 
     # ---------- Diffusion (ComfyUI-like, Phase 4 — specs + stubs) ----------
@@ -264,6 +327,12 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("width", "int", 512, min=64, max=4096),
                  ParamSpec("height", "int", 512, min=64, max=4096),
                  ParamSpec("batch_size", "int", 1, min=1, max=64)],
+        description="Tenseur latent vide (bruit) — point de départ du sampling diffusion. Résolution latente = 1/8 image.",
+        param_help={
+            "width": "Largeur image en pixels (latent = w/8).",
+            "height": "Hauteur image en pixels (latent = h/8).",
+            "batch_size": "Nombre d'images générées en parallèle.",
+        },
     ))
     r.register(NodeSpec(
         name="k_sampler", title="KSampler",
@@ -282,19 +351,29 @@ def default_registry() -> NodeRegistry:
                  ParamSpec("scheduler", "choice", "normal",
                              options=["normal", "karras", "exponential", "simple", "ddim_uniform"]),
                  ParamSpec("denoise", "float", 1.0, min=0.0, max=1.0)],
-        description="Sampling diffusion classique. Inspiré ComfyUI KSampler.",
+        description="Sampling diffusion classique. Inspiré ComfyUI KSampler. Itère sur le latent en débruitant pas à pas.",
+        param_help={
+            "seed": "Graine PRNG. Même seed = même image.",
+            "steps": "Nombre d'itérations de débruitage. Plus = mieux mais plus lent.",
+            "cfg": "Classifier-Free Guidance — force du conditioning. 7-12 typique.",
+            "sampler": "Algorithme de sampling (euler, dpm++, ddim...).",
+            "scheduler": "Stratégie de bruit/timesteps (karras = qualité, normal = standard).",
+            "denoise": "Quantité de bruit à enlever (1.0 = full denoise, <1 = img2img).",
+        },
     ))
     r.register(NodeSpec(
         name="vae_encode", title="VAE Encode",
         category="Diffusion",
         inputs=[SocketSpec("vae", "model"), SocketSpec("image", "image")],
         outputs=[SocketSpec("latent", "tensor")],
+        description="Image → latent (1/8 résolution). Pour img2img/inpainting.",
     ))
     r.register(NodeSpec(
         name="vae_decode", title="VAE Decode",
         category="Diffusion",
         inputs=[SocketSpec("vae", "model"), SocketSpec("latent", "tensor")],
         outputs=[SocketSpec("image", "image")],
+        description="Latent (post-KSampler) → image RGB pixel-space (×8 upsample).",
     ))
     r.register(NodeSpec(
         name="load_image", title="Load Image",
@@ -302,6 +381,8 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("image", "image"), SocketSpec("mask", "image")],
         params=[ParamSpec("path", "str", "input.png")],
         has_thumbnail=True,
+        description="Charge image depuis disque. Mask optionnel pour inpainting.",
+        param_help={"path": "Chemin absolu ou relatif vers le fichier image."},
     ))
     r.register(NodeSpec(
         name="save_image", title="Save Image",
@@ -310,6 +391,11 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("prefix", "str", "ark_"),
                  ParamSpec("dir", "str", "./output")],
         has_thumbnail=True,
+        description="Sauvegarde image (PNG). Nom = prefix + timestamp.",
+        param_help={
+            "prefix": "Préfixe du nom de fichier.",
+            "dir": "Dossier de destination (créé si absent).",
+        },
     ))
     r.register(NodeSpec(
         name="lora_loader", title="LoRA Loader",
@@ -319,6 +405,12 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("lora_name", "str", "lora.safetensors"),
                  ParamSpec("strength_model", "float", 1.0, min=-2.0, max=2.0),
                  ParamSpec("strength_clip", "float", 1.0, min=-2.0, max=2.0)],
+        description="Applique LoRA (Low-Rank Adaptation) → patch léger de model+clip. Style/concept finetuning.",
+        param_help={
+            "lora_name": "Fichier .safetensors LoRA.",
+            "strength_model": "Force d'application sur le model (UNet).",
+            "strength_clip": "Force d'application sur le CLIP (text encoder).",
+        },
     ))
     r.register(NodeSpec(
         name="controlnet_apply", title="ControlNet Apply",
@@ -328,6 +420,8 @@ def default_registry() -> NodeRegistry:
                  SocketSpec("image", "image")],
         outputs=[SocketSpec("conditioning", "tensor")],
         params=[ParamSpec("strength", "float", 1.0, min=0.0, max=2.0)],
+        description="ControlNet — conditionne la diffusion via une image guide (canny, depth, pose...).",
+        param_help={"strength": "Force du conditioning ControlNet (0 = ignoré, 1 = standard)."},
     ))
 
     # ---------- HuggingFace ----------
@@ -339,13 +433,20 @@ def default_registry() -> NodeRegistry:
                  ParamSpec("revision", "str", "main"),
                  ParamSpec("dtype", "choice", "float32",
                              options=["float32", "float16", "bfloat16"])],
-        description="Télécharge un modèle HF Hub (transformers).",
+        description="Télécharge un modèle HF Hub (transformers). Cache ~/.cache/huggingface/.",
+        param_help={
+            "repo_id": "Format owner/model (ex. EleutherAI/pythia-410m).",
+            "revision": "Branche/tag/commit. 'main' par défaut.",
+            "dtype": "Précision : float32 (default), float16 (GPU rapide), bfloat16 (TPU/A100).",
+        },
     ))
     r.register(NodeSpec(
         name="hf_tokenizer", title="HuggingFace Tokenizer",
         category="HuggingFace",
         outputs=[SocketSpec("tokenizer", "any")],
         params=[ParamSpec("repo_id", "str", "EleutherAI/pythia-410m")],
+        description="Charge tokenizer associé au modèle HF (BPE, WordPiece, SentencePiece...).",
+        param_help={"repo_id": "Même repo_id que le modèle pour cohérence vocab."},
     ))
     r.register(NodeSpec(
         name="hf_pipeline", title="HF Pipeline",
@@ -356,6 +457,8 @@ def default_registry() -> NodeRegistry:
                             options=["text-generation", "fill-mask", "translation",
                                       "summarization", "image-classification",
                                       "object-detection", "feature-extraction"])],
+        description="Pipeline haut-niveau HuggingFace : preprocess → model → postprocess.",
+        param_help={"task": "Type de tâche. Auto-configure preprocessing/postprocessing."},
     ))
 
     # ---------- Periph (webcam, micro) ----------
@@ -366,6 +469,11 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("device_id", "int", 0, min=0, max=8),
                  ParamSpec("fps", "int", 30, min=1, max=60)],
         has_thumbnail=True,
+        description="Capture flux webcam live → tenseur image (H, W, 3).",
+        param_help={
+            "device_id": "Index de la caméra (0 = défaut).",
+            "fps": "Frames par seconde cibles.",
+        },
     ))
     r.register(NodeSpec(
         name="microphone", title="Microphone",
@@ -374,6 +482,11 @@ def default_registry() -> NodeRegistry:
         params=[ParamSpec("sample_rate", "int", 16000),
                  ParamSpec("channels", "int", 1, min=1, max=8)],
         has_thumbnail=True,
+        description="Capture audio live → tenseur (T,) ou (C, T).",
+        param_help={
+            "sample_rate": "Échantillons par seconde (16000 = parole, 44100 = musique).",
+            "channels": "1 = mono, 2 = stéréo.",
+        },
     ))
 
     # Metamorph (Phase 17) — registered si dispo

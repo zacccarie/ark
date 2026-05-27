@@ -49,7 +49,7 @@ class PalettePanel(QWidget):
             for s in shown:
                 child = QTreeWidgetItem([s.title])
                 child.setData(0, Qt.ItemDataRole.UserRole, s.name)
-                child.setToolTip(0, s.description or s.title)
+                child.setToolTip(0, self._build_node_tooltip(s))
                 cat_item.addChild(child)
             cat_item.setExpanded(True)
 
@@ -60,3 +60,19 @@ class PalettePanel(QWidget):
         type_name = item.data(0, Qt.ItemDataRole.UserRole)
         if type_name:
             self.node_double_clicked.emit(type_name)
+
+    def _build_node_tooltip(self, spec) -> str:
+        """HTML tooltip riche : description + I/O + params."""
+        lines = [f"<b>{spec.title}</b>"]
+        if spec.description:
+            lines.append(f"<i>{spec.description}</i>")
+        if spec.inputs:
+            ins = ", ".join(f"{i.label}:{i.socket_type}" for i in spec.inputs)
+            lines.append(f"<b>In</b> · {ins}")
+        if spec.outputs:
+            outs = ", ".join(f"{o.label}:{o.socket_type}" for o in spec.outputs)
+            lines.append(f"<b>Out</b> · {outs}")
+        if spec.params:
+            pnames = ", ".join(p.name for p in spec.params)
+            lines.append(f"<b>Params</b> · {pnames}")
+        return "<br>".join(lines)

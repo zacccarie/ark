@@ -47,6 +47,13 @@ class SocketItem(QGraphicsItem):
         self._highlight = False  # drag survol valid target
         self._reject = False     # drag survol invalid target
         self.setZValue(T.Z_NODE + 1)
+        # Tooltip riche : direction + label + type
+        direction = "Entrée" if is_input else "Sortie"
+        self.setToolTip(
+            f"<b>{direction} · {label}</b><br>"
+            f"<span style='color:#888;font-size:10px'>Type · {socket_type}</span><br>"
+            f"<span style='color:#888;font-size:10px'>Drag pour créer connexion</span>"
+        )
 
     def boundingRect(self) -> QRectF:
         r = self.RADIUS + 4

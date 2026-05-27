@@ -37,6 +37,9 @@ class NodeItem(QGraphicsItem):
         self.setAcceptHoverEvents(True)
         self._hover = False
 
+        # Tooltip riche (HTML) — survol node = description + I/O + params
+        self.setToolTip(self._build_tooltip())
+
         # Sockets
         self.input_sockets: list[SocketItem] = []
         self.output_sockets: list[SocketItem] = []
@@ -327,6 +330,24 @@ class NodeItem(QGraphicsItem):
     def set_error(self, msg: str | None):
         self.error = msg
         self.update()
+        self.setToolTip(self._build_tooltip())
+
+    def _build_tooltip(self) -> str:
+        """HTML tooltip riche : description + I/O + erreur."""
+        lines = [f"<b>{self.spec.title}</b>",
+                  f"<span style='color:#888;font-size:10px'>{self.spec.category} · {self.spec.name}</span>"]
+        if self.spec.description:
+            lines.append(f"<br><i>{self.spec.description}</i>")
+        if self.spec.inputs:
+            ins = ", ".join(f"{i.label}:{i.socket_type}" for i in self.spec.inputs)
+            lines.append(f"<br><b>In</b> · {ins}")
+        if self.spec.outputs:
+            outs = ", ".join(f"{o.label}:{o.socket_type}" for o in self.spec.outputs)
+            lines.append(f"<b>Out</b> · {outs}")
+        if self.error:
+            lines.append(f"<br><span style='color:#E11D2A'><b>Erreur</b> · {self.error}</span>")
+        lines.append("<br><span style='color:#888;font-size:10px'>Double-clic : voir glossaire</span>")
+        return "<br>".join(lines)
 
     # ------------------------------------------------------------
     # Multi-input dynamique (vague residual_add, concat)
