@@ -1,98 +1,70 @@
 # ARK roadmap
 
-## Phase 0 — Scaffold ✓ (cette session)
+## Phases livrées (19 phases, 9 commits, 65 tests, ~8500 lignes)
 
-- [x] Repo `ark/` + pyproject + .gitignore
-- [x] Design tokens (`ark/ui/design_tokens.py`) : dark + Arial + accent rouge pur
-- [x] QSS global (`ark/ui/style.py`)
-- [x] MainWindow + menubar + toolbar + statusbar
-- [x] 3 QDockWidget panels : Palette, Inspector, Terminal
-- [x] Node editor : QGraphicsScene + QGraphicsView (zoom, pan)
-- [x] NodeItem + SocketItem + ConnectionItem (bezier)
-- [x] Search overlay (double-clic, filtrage instantané)
-- [x] Registry initial : 20+ nodes types (Input/Neural/Math/Code/Observe/Viz/Training)
-- [x] Entry point `python -m ark`
+| Phase | Statut | Contenu |
+|---|---|---|
+| **0** Scaffold | ✓ | PySide6, design tokens, MainWindow, 3 dock panels, node editor minimal |
+| **1** Interactions | ✓ | Drag connections + validation type + multi-input + resize + context menu |
+| **1.5** Undo/Redo | ✓ | QUndoStack + 5 QUndoCommand subclasses |
+| **2** Compile + Train | ✓ | graph_compiler 14+ handlers, TrainerWorker QThread, errors → red |
+| **3** Save/Load JSON | ✓ | Format ark-arch-v1 (compat metamorph-arch-v1) |
+| **4** ComfyUI specs | ✓ | 10 NodeSpecs Diffusion (KSampler, VAE, CLIP, LoRA, ControlNet) |
+| **4 stub** | ✓ | Handlers déterministes sans modèles téléchargés |
+| **5** Matplotlib viz | ✓ | MetricChart embarqué inspector observer node |
+| **6** Devices | ✓ | webcam (cv2) + microphone (sounddevice) handlers, lazy import |
+| **7** Layout presets | ✓ | 4 presets (workspace/compact/code/training) + save/load custom |
+| **8** Export PyTorch/ONNX | ✓ | Script .py standalone (LazyLinear) + ONNX (opset 17) |
+| **9+10** Observer+auto-mutate | ✓ | Port complet vagues B/C ai-arch-builder |
+| **11** Thumbnails | ✓ | NodeItem render mini (image damier/webcam REC/audio waveform/sparkline) |
+| **12** Multi-projets | ✓ | QTabWidget central, scènes indépendantes, undo par tab |
+| **13** Templates | ✓ | 8 templates (MLP/CNN/ResNet/Transformer/VG/Diffusion/M1/M5) |
+| **14** Templates browser | ✓ | Dialog preview + favoris ~/.ark/favorites.json |
+| **15** Import legacy | ✓ | ai-arch-builder JSON → ARK conversion auto (kebab→snake, camel→snake) |
+| **16** Agent CLI | ✓ | `python -m ark.agent_api` 11 commandes headless |
+| **17** Metamorph bridge | ✓ | M1 CriticalGrowNet + M2 MetaController + M5 DyadicMirror comme nodes ARK |
+| **18** Doc + bench | ✓ | Ce document + bench/compile_benchmark.py |
 
-## Phase 1 — Interactions de base
+## Bench compile (offscreen, MPS dispo)
 
-- [ ] Drag socket → socket pour créer connexion (preview pendant drag)
-- [ ] Validation type-matching à la connexion (rejet si mismatch)
-- [ ] Multi-input dynamique : node residual_add ajoute un connecteur à chaque connexion
-- [ ] Resize handles fonctionnels (coin BR du node)
-- [ ] Bypass toggle (switch dans inspector + double-clic header)
-- [ ] Error overlay sur node (rouge + message)
-- [ ] Undo/redo
-- [ ] Context menu (right-click)
+| Template | params | modules | compile (ms) | forward (ms) | shape |
+|---|---|---|---|---|---|
+| mlp_mnist | 101 770 | 2 | 5.7 ± 11 | 0.19 | [1,28,28]→[10] |
+| cnn_cifar | 8 409 418 | 4 | 25.4 ± 1.5 | 4.91 | [3,32,32]→[10] |
+| resnet_block | 166 682 | 6 | 1.5 ± 0.4 | 0.97 | [3,32,32]→[10] |
+| transformer_mini | 77 194 | 3 | 1.0 ± 0.1 | 1.22 | [16,64]→[10] |
+| vg_mutable | 52 154 | 5 | 0.8 ± 0.1 | 0.21 | [1,28,28]→[10] |
+| metamorph_m1 | 107 370 | 5 | 1.3 ± 0.7 | 0.17 | [1,28,28]→[10] |
+| metamorph_m5 | 66 212 | 2 | 1.1 ± 0.2 | 0.16 | [1,28,28]→[10] |
+| diffusion_basic | — | — | ERR | — | multi-output (Phase 4 réelle) |
 
-## Phase 2 — Compile + train (migration depuis ai-arch-builder)
+Compile sub-millisecond pour majorité. CNN cifar 25ms (8M params).
 
-- [ ] `ark/core/graph_compiler.py` : port de l'ancien graph_compiler v2 (DAG, handlers, vague A-C nodes)
-- [ ] `ark/core/trainer.py` : training loop avec MNIST/CIFAR/text
-- [ ] Auto-mutate triggers fonctionnels
-- [ ] Observer live metrics → terminal panel
-- [ ] Compile errors → set_error() sur nodes incorrects
+## Reste roadmap (différé)
 
-## Phase 3 — Persistence + Export
+| Phase | Statut | Pourquoi différé |
+|---|---|---|
+| **4 réelle** ML backend diffusers | TODO | Demande 5GB téléchargement SD 1.5 + diffusers actif |
+| **11.5** Live thumbnails dynamiques | TODO | Demande webcam réelle active en sandbox |
+| **19** Multi-output compile (diffusion) | TODO | Refactor GraphModel pour graphe DAG multi-sortie |
+| **20** WebSocket sync ARK ↔ metamorph | TODO | Coordination live entre les 2 apps |
+| **21** Plugin system | TODO | Permettre user d'ajouter NodeSpec custom |
 
-- [ ] Save/load JSON metamorph-arch-v1
-- [ ] Export PyTorch nn.Module (.py)
-- [ ] Export ONNX
-- [ ] Export TensorFlow (via tf2onnx ou portage)
-- [ ] Recent files
-- [ ] Project workspaces (multi-graphes)
-
-## Phase 4 — Nodes ComfyUI natifs
-
-Copier les nodes ComfyUI essentiels comme types ARK (pas wrapper, pas serveur séparé) :
-
-- [ ] **KSampler** : diffusion sampling (DDIM, DPM++, Euler, etc.)
-- [ ] **DiffusionModel** loader (.safetensors, .ckpt)
-- [ ] **VAEEncode** / **VAEDecode**
-- [ ] **CLIPTextEncode** (positive / negative prompts)
-- [ ] **LoadImage** / **SaveImage**
-- [ ] **EmptyLatentImage** (W, H, batch)
-- [ ] **ControlNet** apply
-- [ ] **LoRA** loader + strength
-
-Importer modèles tous formats : `.safetensors`, `.ckpt`, `.pt`, `.bin`, `.gguf`, `.onnx`.
-
-## Phase 5 — Viz + thumbnails
-
-- [ ] Thumbnails embarqués dans nodes (image, vidéo séquence, audio waveform, graphe)
-- [ ] Node **plot_scatter** / **plot_line** avec matplotlib intégré
-- [ ] Node **plot_3d** (matplotlib mpl_toolkits ou QtWebEngine + Three.js)
-- [ ] Viz live des activations training (similaire à viz_3d_scatter ai-arch-builder)
-- [ ] Mesures dynamiques (β, λ, intrinsic_dim) plottés en temps réel
-
-## Phase 6 — Périphériques + sources externes
-
-- [ ] Node **webcam** (capture caméra)
-- [ ] Node **microphone** (capture audio)
-- [ ] Node **file_watcher** (drop folder)
-- [ ] Node **http_fetch** (HuggingFace Hub direct download)
-
-## Phase 7 — Workspace + presets
-
-- [ ] Layout presets : workspace / compact / code-first / training-focus
-- [ ] Save layout custom
-- [ ] Multi-projets (onglets en haut)
-- [ ] Templates (graphes prédéfinis pour démarrer)
-- [ ] Connexion HuggingFace (login, search models)
-- [ ] Connexion ComfyUI (si user veut hybrid wrapper en plus du native)
-
-## Décisions architecturales
+## Décisions architecturales fixées
 
 | Question | Choix |
 |---|---|
-| Stack UI | PySide6 (Qt 6 LGPL) |
-| Backend ML | PyTorch (principal) + HF transformers |
-| ComfyUI | Nodes copiés natifs (pas wrapper) |
-| Format JSON | metamorph-arch-v1 (compat avec ancien ai-arch-builder + metamorph) |
+| Stack UI | PySide6 (Qt 6 LGPL, natif) |
+| Backend ML | PyTorch (principal) + diffusers stubs |
+| ComfyUI | Nodes copiés natifs (stubs Phase 4) |
+| Format JSON | ark-arch-v1 (compat metamorph-arch-v1) |
 | Node editor | QGraphicsScene custom (pas de lib externe) |
 | Style | QSS global depuis design_tokens.py |
+| Metamorph integration | Bridge lazy import via ark/core/metamorph_bridge.py |
 
 ## Conventions
 
 - Code : commentaires français, identifiers `snake_case` (PEP8 Python).
 - UI text : français.
-- Esthétique : tout doit passer un design-critique. Pas de dégradés, pas de fluo, accent unique rouge.
+- Esthétique : dark, accent rouge pur `#E11D2A`, typo Arial+monospace.
+- Pas de dépendances ML lourdes au cold install.

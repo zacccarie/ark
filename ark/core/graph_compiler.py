@@ -512,6 +512,17 @@ def _register_diffusion_stubs():
 _register_diffusion_stubs()
 
 
+# Metamorph integration (Phase 17) — lazy import si dispo
+def _register_metamorph():
+    try:
+        from ark.core.metamorph_bridge import register_metamorph_handlers
+        register_metamorph_handlers(HANDLERS)
+    except Exception:
+        pass
+
+_register_metamorph()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

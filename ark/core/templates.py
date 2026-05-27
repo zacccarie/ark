@@ -10,6 +10,8 @@ TEMPLATES_LIST = [
     ("transformer_mini", "Transformer mini (text → 2× transformer block)"),
     ("vg_mutable", "VG mutable + observer + trigger_rule (vagues B+C)"),
     ("diffusion_basic", "Diffusion basic (loader+CLIP+empty_latent+KSampler+VAE+save)"),
+    ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
+    ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
 ]
 
 
@@ -142,6 +144,40 @@ def template_diffusion_basic() -> dict:
                   tags=["template", "diffusion", "comfyui-like"])
 
 
+def template_metamorph_m1() -> dict:
+    """Metamorph M1 CriticalGrowNet : MLP mutable avec criticality target β=-2."""
+    inp = _node("image_input", 0, 200, {"shape": "[1, 28, 28]"})
+    d0 = _node("dense", 260, 200, {"neurons": 128, "activation": "gelu"})
+    cgn = _node("critical_grow_net", 520, 200,
+                  {"hidden_dim": 32, "out_dim": 64, "target_beta": -2.0,
+                   "buffer_size": 256, "activation": "gelu"})
+    obs = _node("observer", 780, 200,
+                  {"metrics": "eff_rank,intrinsic_dim,power_slope,mean_abs",
+                   "buffer_size": 128})
+    rule = _node("trigger_rule", 1040, 200,
+                   {"metric": "power_slope", "op": ">", "threshold": -1.7,
+                    "action_op": "widen", "target_node": cgn["id"], "delta": 4})
+    out = _node("dense", 1300, 200, {"neurons": 10, "activation": "none"})
+    conns = [_conn(inp, d0), _conn(d0, cgn), _conn(cgn, obs),
+              _conn(obs, rule), _conn(rule, out)]
+    return _wrap("Metamorph M1 CriticalGrowNet",
+                  [inp, d0, cgn, obs, rule, out], conns,
+                  num_classes=10, tags=["template", "metamorph", "m1", "soc"])
+
+
+def template_metamorph_m5() -> dict:
+    """Metamorph M5 DyadicMirror : 2 SelfRefAgent en miroir."""
+    inp = _node("image_input", 0, 200, {"shape": "[1, 28, 28]"})
+    d0 = _node("dense", 260, 200, {"neurons": 64, "activation": "gelu"})
+    dm = _node("dyadic_mirror", 520, 200,
+                 {"hidden_dim": 64, "out_dim": 10,
+                  "state_dim": 16, "coupled": True})
+    conns = [_conn(inp, d0), _conn(d0, dm)]
+    return _wrap("Metamorph M5 DyadicMirror",
+                  [inp, d0, dm], conns,
+                  num_classes=10, tags=["template", "metamorph", "m5", "mead-vygotsky"])
+
+
 _BUILDERS = {
     "mlp_mnist": template_mlp_mnist,
     "cnn_cifar": template_cnn_cifar,
@@ -149,6 +185,8 @@ _BUILDERS = {
     "transformer_mini": template_transformer_mini,
     "vg_mutable": template_vg_mutable,
     "diffusion_basic": template_diffusion_basic,
+    "metamorph_m1": template_metamorph_m1,
+    "metamorph_m5": template_metamorph_m5,
 }
 
 

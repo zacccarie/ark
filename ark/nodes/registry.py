@@ -376,4 +376,11 @@ def default_registry() -> NodeRegistry:
         has_thumbnail=True,
     ))
 
+    # Metamorph (Phase 17) — registered si dispo
+    try:
+        from ark.core.metamorph_bridge import register_metamorph_specs
+        register_metamorph_specs(r)
+    except Exception:
+        pass
+
     return r

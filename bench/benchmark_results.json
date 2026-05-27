@@ -1,0 +1,147 @@
+[
+  {
+    "name": "mlp_mnist",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 101770,
+    "n_modules": 2,
+    "input_shape": [
+      1,
+      28,
+      28
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 5.694741616025567,
+    "compile_ms_std": 11.016253842925959,
+    "compile_ms_min": 0.6567500531673431,
+    "forward_ms_mean": 0.1901668030768633
+  },
+  {
+    "name": "cnn_cifar",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 8409418,
+    "n_modules": 4,
+    "input_shape": [
+      3,
+      32,
+      32
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 25.417858362197876,
+    "compile_ms_std": 1.4971736458336726,
+    "compile_ms_min": 24.215040961280465,
+    "forward_ms_mean": 4.905974864959717
+  },
+  {
+    "name": "resnet_block",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 166682,
+    "n_modules": 6,
+    "input_shape": [
+      3,
+      32,
+      32
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 1.538266846910119,
+    "compile_ms_std": 0.35546743227154365,
+    "compile_ms_min": 1.3259581755846739,
+    "forward_ms_mean": 0.9677084162831306
+  },
+  {
+    "name": "transformer_mini",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 77194,
+    "n_modules": 3,
+    "input_shape": [
+      16,
+      64
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 1.0245914105325937,
+    "compile_ms_std": 0.05861460055774271,
+    "compile_ms_min": 0.9394579101353884,
+    "forward_ms_mean": 1.2243001721799374
+  },
+  {
+    "name": "vg_mutable",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 52154,
+    "n_modules": 5,
+    "input_shape": [
+      1,
+      28,
+      28
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 0.806549796834588,
+    "compile_ms_std": 0.05570082778719885,
+    "compile_ms_min": 0.7509998977184296,
+    "forward_ms_mean": 0.21428363397717476
+  },
+  {
+    "name": "diffusion_basic",
+    "n_iter": 0,
+    "error": "Missing input node (image/tabular/text)",
+    "n_params": null,
+    "n_modules": null,
+    "input_shape": null,
+    "output_shape": null,
+    "compile_ms_mean": null,
+    "compile_ms_std": 0.0,
+    "compile_ms_min": null,
+    "forward_ms_mean": null
+  },
+  {
+    "name": "metamorph_m1",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 107370,
+    "n_modules": 5,
+    "input_shape": [
+      1,
+      28,
+      28
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 1.277658436447382,
+    "compile_ms_std": 0.6756646705387183,
+    "compile_ms_min": 0.9360420517623425,
+    "forward_ms_mean": 0.16591642051935196
+  },
+  {
+    "name": "metamorph_m5",
+    "n_iter": 5,
+    "error": null,
+    "n_params": 66212,
+    "n_modules": 2,
+    "input_shape": [
+      1,
+      28,
+      28
+    ],
+    "output_shape": [
+      10
+    ],
+    "compile_ms_mean": 1.0924499947577715,
+    "compile_ms_std": 0.21439486504461994,
+    "compile_ms_min": 0.9090830571949482,
+    "forward_ms_mean": 0.15558344312012196
+  }
+]
