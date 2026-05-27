@@ -99,10 +99,19 @@ class MainWindow(QMainWindow):
         redo_act.setShortcut(QKeySequence.StandardKey.Redo)
         edit_menu.addAction(redo_act)
         edit_menu.addSeparator()
-        edit_menu.addAction("Tout sélectionner", lambda: None, QKeySequence.StandardKey.SelectAll)
+        edit_menu.addAction("Copier", self._on_copy, QKeySequence.StandardKey.Copy)
+        edit_menu.addAction("Coller", self._on_paste, QKeySequence.StandardKey.Paste)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Tout sélectionner", self._on_select_all,
+                              QKeySequence.StandardKey.SelectAll)
 
         view_menu = menubar.addMenu("Affichage")
         view_menu.addAction("Reset layout", self._on_reset_layout)
+        view_menu.addSeparator()
+        a_auto = QAction("Auto-layout nodes", self)
+        a_auto.setShortcut(QKeySequence("Ctrl+Alt+L"))
+        a_auto.triggered.connect(self._on_auto_layout)
+        view_menu.addAction(a_auto)
         view_menu.addSeparator()
         view_menu.addAction("Layout : Workspace", lambda: self._apply_preset("workspace"))
         view_menu.addAction("Layout : Compact", lambda: self._apply_preset("compact"))
@@ -452,6 +461,62 @@ class MainWindow(QMainWindow):
 
     def _on_search(self):
         self.view.open_search_overlay()
+
+    def _on_auto_layout(self):
+        from ark.core.layout import auto_layout_scene
+        auto_layout_scene(self.scene)
+        self.statusBar().showMessage("Auto-layout appliqué", 2000)
+
+    def _on_copy(self):
+        from ark.ui.node_editor.node_item import NodeItem
+        sel = [it for it in self.scene.selectedItems() if isinstance(it, NodeItem)]
+        if not sel:
+            self.statusBar().showMessage("Rien à copier", 1500)
+            return
+        clip = []
+        for n in sel:
+            pos = n.pos()
+            clip.append({
+                "type": n.spec.name,
+                "params": dict(n.params),
+                "bypass": n.bypass,
+                "width": n.width,
+                "rel_x": float(pos.x()), "rel_y": float(pos.y()),
+            })
+        self._clipboard = clip
+        self.statusBar().showMessage(f"{len(clip)} node(s) copié(s)", 1500)
+
+    def _on_paste(self):
+        clip = getattr(self, "_clipboard", None)
+        if not clip:
+            self.statusBar().showMessage("Presse-papier vide", 1500)
+            return
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        base_x = min(c["rel_x"] for c in clip)
+        base_y = min(c["rel_y"] for c in clip)
+        for c in clip:
+            dx = c["rel_x"] - base_x + 40
+            dy = c["rel_y"] - base_y + 40
+            new_node = self.scene.create_node(c["type"],
+                                                x=center.x() + dx,
+                                                y=center.y() + dy)
+            if new_node is not None:
+                for k, v in c["params"].items():
+                    if k in new_node.params:
+                        new_node.params[k] = v
+                new_node.bypass = c.get("bypass", False)
+                try:
+                    new_node.width = int(c.get("width", new_node.width))
+                    new_node._layout_sockets()
+                except Exception:
+                    pass
+        self.statusBar().showMessage(f"{len(clip)} node(s) collé(s)", 1500)
+
+    def _on_select_all(self):
+        from ark.ui.node_editor.node_item import NodeItem
+        for it in self.scene.items():
+            if isinstance(it, NodeItem):
+                it.setSelected(True)
 
     def _on_about(self):
         from PySide6.QtWidgets import QMessageBox

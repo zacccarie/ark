@@ -383,4 +383,12 @@ def default_registry() -> NodeRegistry:
     except Exception:
         pass
 
+    # User plugins (Phase 21) — chargés depuis ~/.ark/plugins/
+    try:
+        from ark.core.plugins import register_plugins
+        from ark.core.graph_compiler import HANDLERS
+        register_plugins(r, HANDLERS, verbose=False)
+    except Exception:
+        pass
+
     return r
