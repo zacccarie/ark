@@ -1,0 +1,133 @@
+[
+  {
+    "name": "mlp_mnist",
+    "auto_mutate": false,
+    "epochs": [
+      {
+        "epoch": 1,
+        "train_loss": 1.7343444499969483,
+        "train_acc": 0.6043333333333333,
+        "val_acc": 0.765,
+        "elapsed": 0.7994782908353955
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.725864571094513,
+        "train_acc": 0.8266666666666667,
+        "val_acc": 0.84,
+        "elapsed": 0.2932372090872377
+      }
+    ],
+    "auto_mutations": [],
+    "total_elapsed": 1.0928947089705616,
+    "final_n_params": 101770
+  },
+  {
+    "name": "vg_mutable",
+    "auto_mutate": true,
+    "epochs": [
+      {
+        "epoch": 1,
+        "train_loss": 2.131925450960795,
+        "train_acc": 0.33266666666666667,
+        "val_acc": 0.456,
+        "elapsed": 1.3796578750479966
+      },
+      {
+        "epoch": 2,
+        "train_loss": 1.343938128153483,
+        "train_acc": 0.63,
+        "val_acc": 0.661,
+        "elapsed": 0.6323558331932873
+      }
+    ],
+    "auto_mutations": [
+      {
+        "epoch": 1,
+        "action": "mutate",
+        "node_id": "vg_block_f1dd87",
+        "op": "widen",
+        "delta": 8,
+        "triggered_by": {
+          "metric": "eff_rank",
+          "value": 0.0,
+          "op": "<",
+          "threshold": 100.0
+        },
+        "applied": true,
+        "new_hidden_dim": 24
+      },
+      {
+        "epoch": 2,
+        "action": "mutate",
+        "node_id": "vg_block_f1dd87",
+        "op": "widen",
+        "delta": 8,
+        "triggered_by": {
+          "metric": "eff_rank",
+          "value": 0.0,
+          "op": "<",
+          "threshold": 100.0
+        },
+        "applied": true,
+        "new_hidden_dim": 32
+      }
+    ],
+    "total_elapsed": 2.019715999951586,
+    "final_n_params": 53706
+  },
+  {
+    "name": "metamorph_m1",
+    "auto_mutate": true,
+    "epochs": [
+      {
+        "epoch": 1,
+        "train_loss": 1.990627080599467,
+        "train_acc": 0.43633333333333335,
+        "val_acc": 0.591,
+        "elapsed": 0.720515999943018
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.8702512253125508,
+        "train_acc": 0.7616666666666667,
+        "val_acc": 0.79,
+        "elapsed": 0.5916863330639899
+      }
+    ],
+    "auto_mutations": [
+      {
+        "epoch": 1,
+        "action": "mutate",
+        "node_id": "critical_grow_net_f7910b",
+        "op": "widen",
+        "delta": 4,
+        "triggered_by": {
+          "metric": "power_slope",
+          "value": -0.9418275952339172,
+          "op": ">",
+          "threshold": -1.7
+        },
+        "applied": true,
+        "new_hidden_dim": 36
+      },
+      {
+        "epoch": 2,
+        "action": "mutate",
+        "node_id": "critical_grow_net_f7910b",
+        "op": "widen",
+        "delta": 4,
+        "triggered_by": {
+          "metric": "power_slope",
+          "value": -0.5204041600227356,
+          "op": ">",
+          "threshold": -1.7
+        },
+        "applied": true,
+        "new_hidden_dim": 40
+      }
+    ],
+    "total_elapsed": 1.3204619591124356,
+    "final_n_params": 108914
+  }
+]

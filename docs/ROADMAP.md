@@ -25,6 +25,17 @@
 | **17** Metamorph bridge | ✓ | M1 CriticalGrowNet + M2 MetaController + M5 DyadicMirror comme nodes ARK |
 | **18** Doc + bench | ✓ | Ce document + bench/compile_benchmark.py |
 
+## Bench training réel MNIST (offscreen, MPS)
+
+| Template | auto_mut | val_acc 2 epochs | time | params | mutations |
+|---|---|---|---|---|---|
+| mlp_mnist | False | **84.0%** | 1.1s | 101k | 0 |
+| vg_mutable | True | 66.1% | 2.0s | 53k → 53.7k | 2 |
+| metamorph_m1 | True | **79.0%** | 1.3s | 107k → 108.9k | 2 |
+
+Pipeline complet validé : template → compile → MPS training → auto_mutate
+observer/trigger → réseau pousse + apprend.
+
 ## Bench compile (offscreen, MPS dispo)
 
 | Template | params | modules | compile (ms) | forward (ms) | shape |

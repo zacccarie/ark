@@ -216,6 +216,97 @@ def export_payload(payload: dict, kind: str, out_path: str,
     return str(p)
 
 
+def train_payload(payload: dict, epochs: int = 1, batch_size: int = 128,
+                    n_train: int = 3000, n_val: int = 1000,
+                    auto_mutate: bool = False, num_classes: int | None = None,
+                    verbose: bool = True) -> dict:
+    """Train headless une arch sur MNIST. Retourne dict résultats + history."""
+    from ark.core.graph_compiler import compile_scene
+    from ark.core.trainer import mnist_loaders, pick_device
+    import time
+    import torch
+    import torch.nn as nn
+
+    scene = _build_headless_scene(payload)
+    cg = compile_scene(scene, num_classes=num_classes)
+    device = pick_device()
+    model = cg.model.to(device)
+    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = nn.CrossEntropyLoss()
+    train_loader, val_loader = mnist_loaders(
+        n_train=n_train, n_val=n_val, batch_size=batch_size
+    )
+    history = {"epochs": [], "auto_mutations": []}
+    t0_total = time.perf_counter()
+    for ep in range(1, epochs + 1):
+        model.train()
+        running_loss, correct, total = 0.0, 0, 0
+        t0 = time.perf_counter()
+        for x, y in train_loader:
+            x, y = x.to(device), y.to(device)
+            optim.zero_grad()
+            logits = model(x)
+            loss = loss_fn(logits, y)
+            loss.backward()
+            optim.step()
+            running_loss += loss.item() * x.size(0)
+            correct += (logits.argmax(dim=-1) == y).sum().item()
+            total += x.size(0)
+        model.eval()
+        vc, vt = 0, 0
+        with torch.no_grad():
+            for x, y in val_loader:
+                x, y = x.to(device), y.to(device)
+                vc += (model(x).argmax(dim=-1) == y).sum().item()
+                vt += x.size(0)
+        ep_info = {
+            "epoch": ep, "train_loss": running_loss / total,
+            "train_acc": correct / total, "val_acc": vc / vt,
+            "elapsed": time.perf_counter() - t0,
+        }
+        history["epochs"].append(ep_info)
+        if verbose:
+            print(f"  ep{ep} train_loss={ep_info['train_loss']:.4f} "
+                  f"train_acc={ep_info['train_acc']*100:.2f}% "
+                  f"val_acc={ep_info['val_acc']*100:.2f}% "
+                  f"({ep_info['elapsed']:.1f}s)")
+        # Auto-mutate (vague C : observer + trigger_rule)
+        if auto_mutate and hasattr(model, "modules_dict"):
+            metrics = {}
+            for nid, m in model.modules_dict.items():
+                if hasattr(m, "last_metrics") and isinstance(m.last_metrics, dict):
+                    metrics.update(m.last_metrics)
+            # ark_id → module map pour résolution target
+            ark_to_mod = {getattr(m, "_ark_node_id", None): m
+                            for m in model.modules_dict.values()
+                            if getattr(m, "_ark_node_id", None)}
+            for nid, m in model.modules_dict.items():
+                if not (hasattr(m, "evaluate") and callable(m.evaluate)):
+                    continue
+                a = m.evaluate(metrics)
+                if not a:
+                    continue
+                target = ark_to_mod.get(a["node_id"])
+                if target and hasattr(target, a["op"]):
+                    try:
+                        getattr(target, a["op"])(a.get("delta", 8))
+                        a["applied"] = True
+                        if hasattr(target, "hidden_dim"):
+                            a["new_hidden_dim"] = target.hidden_dim
+                        history["auto_mutations"].append({"epoch": ep, **a})
+                        if verbose:
+                            print(f"    ⟳ mutate {a['node_id'][:14]} "
+                                  f"{a['op']}+{a.get('delta', 8)} → "
+                                  f"h={a.get('new_hidden_dim', '?')}")
+                        model.to(device)
+                        optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+                    except Exception as e:
+                        a["error"] = str(e)
+    history["total_elapsed"] = time.perf_counter() - t0_total
+    history["final_n_params"] = sum(p.numel() for p in model.parameters())
+    return history
+
+
 # ============================================================
 # CLI
 # ============================================================
@@ -276,6 +367,24 @@ def _cmd_export(args):
     payload, _ = load_any(Path(args.spec))
     out = export_payload(payload, args.kind, args.out, num_classes=args.num_classes)
     print(f"saved → {out}")
+
+
+def _cmd_train(args):
+    payload = get_template(args.spec)
+    if payload is None:
+        payload, _fmt = load_any(Path(args.spec))
+    print(f"# training: {payload.get('name', args.spec)}")
+    nc = args.num_classes or payload.get("metadata", {}).get("num_classes")
+    hist = train_payload(payload, epochs=args.epochs, batch_size=args.batch_size,
+                            n_train=args.n_train, n_val=args.n_val,
+                            auto_mutate=args.auto_mutate, num_classes=nc,
+                            verbose=True)
+    print(f"\n[done] total {hist['total_elapsed']:.1f}s · "
+          f"final params {hist['final_n_params']:,} · "
+          f"mutations {len(hist['auto_mutations'])}")
+    if args.out:
+        Path(args.out).write_text(json.dumps(hist, indent=2, default=str))
+        print(f"[saved] {args.out}")
 
 
 def _cmd_convert(args):
@@ -362,6 +471,17 @@ def main():
     p.add_argument("out")
     p.add_argument("--num-classes", type=int, default=None)
     p.set_defaults(func=_cmd_export)
+
+    p = sub.add_parser("train", help="MNIST headless train")
+    p.add_argument("spec", help="template name OR .json file")
+    p.add_argument("--epochs", type=int, default=2)
+    p.add_argument("--batch-size", type=int, default=128)
+    p.add_argument("--n-train", type=int, default=3000)
+    p.add_argument("--n-val", type=int, default=1000)
+    p.add_argument("--num-classes", type=int, default=None)
+    p.add_argument("--auto-mutate", action="store_true")
+    p.add_argument("--out", default=None, help="save history JSON")
+    p.set_defaults(func=_cmd_train)
 
     p = sub.add_parser("convert", help="ai-arch-builder JSON → ark-arch-v1")
     p.add_argument("src")
