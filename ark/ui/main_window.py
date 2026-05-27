@@ -9,11 +9,11 @@ Layout par défaut :
 Tous panneaux QDockWidget natifs : drag, undock, redimension, fermeture.
 """
 from __future__ import annotations
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import Qt, QSize, QThread
+from PySide6.QtGui import QAction, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QWidget, QVBoxLayout, QLabel,
-    QTabWidget, QToolBar, QStatusBar, QApplication,
+    QTabWidget, QToolBar, QStatusBar, QApplication, QFileDialog, QMessageBox,
 )
 
 from ark.ui import design_tokens as T
@@ -38,6 +38,9 @@ class MainWindow(QMainWindow):
         )
 
         self._registry = default_registry()
+        self.undo_stack = QUndoStack(self)
+        self.undo_stack.setUndoLimit(200)
+        self._current_file: str | None = None
         self._build_menus()
         self._build_toolbar()
         self._build_status_bar()
@@ -73,8 +76,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(a_quit)
 
         edit_menu = menubar.addMenu("Édition")
-        edit_menu.addAction("Annuler", self._on_undo, QKeySequence.StandardKey.Undo)
-        edit_menu.addAction("Refaire", self._on_redo, QKeySequence.StandardKey.Redo)
+        undo_act = self.undo_stack.createUndoAction(self, "Annuler")
+        undo_act.setShortcut(QKeySequence.StandardKey.Undo)
+        edit_menu.addAction(undo_act)
+        redo_act = self.undo_stack.createRedoAction(self, "Refaire")
+        redo_act.setShortcut(QKeySequence.StandardKey.Redo)
+        edit_menu.addAction(redo_act)
         edit_menu.addSeparator()
         edit_menu.addAction("Tout sélectionner", lambda: None, QKeySequence.StandardKey.SelectAll)
 
@@ -124,7 +131,7 @@ class MainWindow(QMainWindow):
     # Central widget : node editor
     # ------------------------------------------------------------
     def _build_central(self):
-        self.scene = NodeScene(registry=self._registry)
+        self.scene = NodeScene(registry=self._registry, undo_stack=self.undo_stack)
         self.view = NodeEditorView(self.scene)
         self.setCentralWidget(self.view)
 
@@ -184,16 +191,38 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Nouveau graphe", 1500)
 
     def _on_open(self):
-        self.statusBar().showMessage("Ouverture non implémentée", 2000)
+        path, _ = QFileDialog.getOpenFileName(self, "Ouvrir une architecture", "",
+                                                "ARK JSON (*.json)")
+        if not path:
+            return
+        try:
+            from ark.core.format import load_scene
+            payload = load_scene(self.scene, path)
+            self._current_file = path
+            self.undo_stack.clear()
+            self.statusBar().showMessage(f"Chargé : {path}", 3000)
+            self.terminal.append_log(f"[load] {payload.get('name', '?')} — "
+                                       f"{len(self.scene.nodes())} nodes, "
+                                       f"{len(self.scene.connections())} conns")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur de chargement", str(e))
 
     def _on_save(self):
-        self.statusBar().showMessage("Sauvegarde non implémentée", 2000)
-
-    def _on_undo(self):
-        self.statusBar().showMessage("Annuler — non implémenté", 1500)
-
-    def _on_redo(self):
-        self.statusBar().showMessage("Refaire — non implémenté", 1500)
+        if self._current_file:
+            path = self._current_file
+        else:
+            path, _ = QFileDialog.getSaveFileName(self, "Enregistrer", "untitled.json",
+                                                    "ARK JSON (*.json)")
+            if not path:
+                return
+        try:
+            from ark.core.format import save_scene
+            save_scene(self.scene, path, name=path.split('/')[-1].replace('.json', ''))
+            self._current_file = path
+            self.statusBar().showMessage(f"Sauvé : {path}", 3000)
+            self.terminal.append_log(f"[save] {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur de sauvegarde", str(e))
 
     def _on_reset_layout(self):
         self.statusBar().showMessage("Reset layout — TODO presets", 1500)
@@ -202,14 +231,63 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Layout preset : {name} — TODO", 2000)
 
     def _on_compile(self):
-        n_nodes = len(self.scene.nodes())
-        self.statusBar().showMessage(f"Compile · {n_nodes} nodes — TODO", 2000)
+        from ark.core.graph_compiler import compile_scene, GraphCompileError
+        try:
+            self._compiled = compile_scene(self.scene, num_classes=None)
+            n_params = sum(p.numel() for p in self._compiled.model.parameters())
+            msg = (f"✓ compile · {len(self.scene.nodes())} nodes · "
+                   f"{n_params:,} params · in={self._compiled.input_shape} → "
+                   f"out={self._compiled.output_shape}")
+            self.statusBar().showMessage(msg, 5000)
+            self.terminal.append_log(msg)
+        except GraphCompileError as e:
+            self.statusBar().showMessage(f"✗ compile error : {e}", 8000)
+            self.terminal.append_log(f"[compile error] {e}")
 
     def _on_train(self):
-        self.statusBar().showMessage("Train — TODO", 2000)
+        from ark.core.graph_compiler import compile_scene, GraphCompileError
+        from ark.core.trainer import TrainerWorker, mnist_loaders, pick_device
+        try:
+            self._compiled = compile_scene(self.scene, num_classes=10)
+        except GraphCompileError as e:
+            QMessageBox.critical(self, "Compile error", str(e))
+            return
+        # Setup thread + worker
+        self._thread = QThread(self)
+        train_loader, val_loader = mnist_loaders(n_train=3000, n_val=1000, batch_size=128)
+        self._worker = TrainerWorker(self._compiled, train_loader, val_loader,
+                                       epochs=1, device=pick_device())
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.status_changed.connect(lambda s: self.terminal.append_log(f"[train] {s}"))
+        self._worker.batch_progressed.connect(self._on_batch)
+        self._worker.epoch_finished.connect(self._on_epoch)
+        self._worker.error.connect(lambda e: self.terminal.append_log(f"[train error] {e}"))
+        self._worker.done.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
+        self.statusBar().showMessage("Training démarré...", 2000)
+
+    def _on_batch(self, info: dict):
+        self.statusBar().showMessage(
+            f"epoch {info['epoch']} · batch {info['batch']}/{info['total_batches']} · "
+            f"loss={info['loss']:.4f} · acc={info['acc']*100:.2f}%", 1500
+        )
+
+    def _on_epoch(self, info: dict):
+        msg = (f"epoch {info['epoch']}/{info['epochs']} — "
+               f"train_loss={info['train_loss']:.4f} train_acc={info['train_acc']*100:.2f}% · "
+               f"val_loss={info['val_loss']:.4f if info['val_loss'] is not None else 0:.4f} "
+               f"val_acc={info['val_acc']*100 if info['val_acc'] else 0:.2f}% "
+               f"({info['elapsed']:.1f}s)")
+        self.terminal.append_log(msg)
+        self.statusBar().showMessage(msg, 4000)
 
     def _on_stop(self):
-        self.statusBar().showMessage("Stop", 1500)
+        if hasattr(self, "_worker") and self._worker is not None:
+            self._worker.stop()
+            self.statusBar().showMessage("Stop demandé", 1500)
 
     def _on_search(self):
         self.view.open_search_overlay()

@@ -238,4 +238,142 @@ def default_registry() -> NodeRegistry:
         outputs=[SocketSpec("loss", "number")],
     ))
 
+    # ---------- Diffusion (ComfyUI-like, Phase 4 — specs + stubs) ----------
+    r.register(NodeSpec(
+        name="diffusion_model_loader", title="Diffusion Model Loader",
+        category="Diffusion",
+        outputs=[SocketSpec("model", "model"), SocketSpec("clip", "model"),
+                  SocketSpec("vae", "model")],
+        params=[ParamSpec("checkpoint", "str", "model.safetensors"),
+                 ParamSpec("device", "choice", "auto",
+                             options=["auto", "cuda", "mps", "cpu"])],
+        description="Charge un checkpoint diffusion (.safetensors/.ckpt) → model+clip+vae.",
+    ))
+    r.register(NodeSpec(
+        name="clip_text_encode", title="CLIP Text Encode",
+        category="Diffusion",
+        inputs=[SocketSpec("clip", "model")],
+        outputs=[SocketSpec("conditioning", "tensor")],
+        params=[ParamSpec("text", "multiline", "a serene cyberpunk cityscape, neon, rain")],
+        description="Encode prompt texte via CLIP → conditioning tensor.",
+    ))
+    r.register(NodeSpec(
+        name="empty_latent_image", title="Empty Latent Image",
+        category="Diffusion",
+        outputs=[SocketSpec("latent", "tensor")],
+        params=[ParamSpec("width", "int", 512, min=64, max=4096),
+                 ParamSpec("height", "int", 512, min=64, max=4096),
+                 ParamSpec("batch_size", "int", 1, min=1, max=64)],
+    ))
+    r.register(NodeSpec(
+        name="k_sampler", title="KSampler",
+        category="Diffusion",
+        inputs=[SocketSpec("model", "model"),
+                 SocketSpec("positive", "tensor"),
+                 SocketSpec("negative", "tensor"),
+                 SocketSpec("latent", "tensor")],
+        outputs=[SocketSpec("latent", "tensor")],
+        params=[ParamSpec("seed", "int", 42),
+                 ParamSpec("steps", "int", 20, min=1, max=200),
+                 ParamSpec("cfg", "float", 7.0, min=0.0, max=30.0),
+                 ParamSpec("sampler", "choice", "euler",
+                             options=["euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m",
+                                       "dpmpp_2m_sde", "ddim", "uni_pc"]),
+                 ParamSpec("scheduler", "choice", "normal",
+                             options=["normal", "karras", "exponential", "simple", "ddim_uniform"]),
+                 ParamSpec("denoise", "float", 1.0, min=0.0, max=1.0)],
+        description="Sampling diffusion classique. Inspiré ComfyUI KSampler.",
+    ))
+    r.register(NodeSpec(
+        name="vae_encode", title="VAE Encode",
+        category="Diffusion",
+        inputs=[SocketSpec("vae", "model"), SocketSpec("image", "image")],
+        outputs=[SocketSpec("latent", "tensor")],
+    ))
+    r.register(NodeSpec(
+        name="vae_decode", title="VAE Decode",
+        category="Diffusion",
+        inputs=[SocketSpec("vae", "model"), SocketSpec("latent", "tensor")],
+        outputs=[SocketSpec("image", "image")],
+    ))
+    r.register(NodeSpec(
+        name="load_image", title="Load Image",
+        category="Diffusion",
+        outputs=[SocketSpec("image", "image"), SocketSpec("mask", "image")],
+        params=[ParamSpec("path", "str", "input.png")],
+        has_thumbnail=True,
+    ))
+    r.register(NodeSpec(
+        name="save_image", title="Save Image",
+        category="Diffusion",
+        inputs=[SocketSpec("image", "image")],
+        params=[ParamSpec("prefix", "str", "ark_"),
+                 ParamSpec("dir", "str", "./output")],
+        has_thumbnail=True,
+    ))
+    r.register(NodeSpec(
+        name="lora_loader", title="LoRA Loader",
+        category="Diffusion",
+        inputs=[SocketSpec("model", "model"), SocketSpec("clip", "model")],
+        outputs=[SocketSpec("model", "model"), SocketSpec("clip", "model")],
+        params=[ParamSpec("lora_name", "str", "lora.safetensors"),
+                 ParamSpec("strength_model", "float", 1.0, min=-2.0, max=2.0),
+                 ParamSpec("strength_clip", "float", 1.0, min=-2.0, max=2.0)],
+    ))
+    r.register(NodeSpec(
+        name="controlnet_apply", title="ControlNet Apply",
+        category="Diffusion",
+        inputs=[SocketSpec("conditioning", "tensor"),
+                 SocketSpec("control_net", "model"),
+                 SocketSpec("image", "image")],
+        outputs=[SocketSpec("conditioning", "tensor")],
+        params=[ParamSpec("strength", "float", 1.0, min=0.0, max=2.0)],
+    ))
+
+    # ---------- HuggingFace ----------
+    r.register(NodeSpec(
+        name="hf_model_loader", title="HuggingFace Loader",
+        category="HuggingFace",
+        outputs=[SocketSpec("model", "model")],
+        params=[ParamSpec("repo_id", "str", "EleutherAI/pythia-410m"),
+                 ParamSpec("revision", "str", "main"),
+                 ParamSpec("dtype", "choice", "float32",
+                             options=["float32", "float16", "bfloat16"])],
+        description="Télécharge un modèle HF Hub (transformers).",
+    ))
+    r.register(NodeSpec(
+        name="hf_tokenizer", title="HuggingFace Tokenizer",
+        category="HuggingFace",
+        outputs=[SocketSpec("tokenizer", "any")],
+        params=[ParamSpec("repo_id", "str", "EleutherAI/pythia-410m")],
+    ))
+    r.register(NodeSpec(
+        name="hf_pipeline", title="HF Pipeline",
+        category="HuggingFace",
+        inputs=[SocketSpec("model", "model"), SocketSpec("input", "any")],
+        outputs=[SocketSpec("output", "any")],
+        params=[ParamSpec("task", "choice", "text-generation",
+                            options=["text-generation", "fill-mask", "translation",
+                                      "summarization", "image-classification",
+                                      "object-detection", "feature-extraction"])],
+    ))
+
+    # ---------- Periph (webcam, micro) ----------
+    r.register(NodeSpec(
+        name="webcam", title="Webcam",
+        category="Devices",
+        outputs=[SocketSpec("frame", "image")],
+        params=[ParamSpec("device_id", "int", 0, min=0, max=8),
+                 ParamSpec("fps", "int", 30, min=1, max=60)],
+        has_thumbnail=True,
+    ))
+    r.register(NodeSpec(
+        name="microphone", title="Microphone",
+        category="Devices",
+        outputs=[SocketSpec("audio", "tensor")],
+        params=[ParamSpec("sample_rate", "int", 16000),
+                 ParamSpec("channels", "int", 1, min=1, max=8)],
+        has_thumbnail=True,
+    ))
+
     return r

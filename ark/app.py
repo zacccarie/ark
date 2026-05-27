@@ -10,12 +10,15 @@ from ark.ui import design_tokens as T
 
 
 def create_app(argv: list[str] | None = None) -> QApplication:
+    """Crée ou récupère le singleton QApplication."""
+    existing = QApplication.instance()
+    if existing is not None:
+        return existing
     if argv is None:
         argv = sys.argv
     QApplication.setApplicationName("ARK")
     QApplication.setOrganizationName("Zaccarie Aglas")
     app = QApplication(argv)
-    # Force font fallback Arial systématique
     f = QFont("Arial", T.FS_BODY)
     app.setFont(f)
     app.setStyleSheet(build_qss())
