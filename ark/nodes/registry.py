@@ -526,6 +526,15 @@ def default_registry() -> NodeRegistry:
         import sys
         print(f"[ARK] auto_register specs failed: {e}", file=sys.stderr)
 
+    # User Groups (Phase 31) — scan ~/.ark/groups/*.json
+    try:
+        from ark.core.groups import register_groups
+        from ark.core.graph_compiler import HANDLERS
+        register_groups(r, HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] groups load failed: {e}", file=sys.stderr)
+
     # User plugins (Phase 21) — chargés depuis ~/.ark/plugins/
     try:
         from ark.core.plugins import register_plugins

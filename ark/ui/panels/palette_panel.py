@@ -56,6 +56,10 @@ class PalettePanel(QWidget):
     def _refilter(self, text: str):
         self._build_tree(text)
 
+    def refresh(self):
+        """Phase 31 — reconstruit tree (utilisé après register_groups live)."""
+        self._build_tree(self.search.text())
+
     def _on_double_clicked(self, item, col):
         type_name = item.data(0, Qt.ItemDataRole.UserRole)
         if type_name:

@@ -104,6 +104,14 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         edit_menu.addAction("Tout sélectionner", self._on_select_all,
                               QKeySequence.StandardKey.SelectAll)
+        edit_menu.addSeparator()
+        a_group = QAction("Enregistrer sélection comme groupe...", self)
+        a_group.setShortcut(QKeySequence("Ctrl+G"))
+        a_group.triggered.connect(self._on_save_selection_as_group)
+        edit_menu.addAction(a_group)
+        a_reload_groups = QAction("Recharger groupes utilisateur", self)
+        a_reload_groups.triggered.connect(self._on_reload_user_groups)
+        edit_menu.addAction(a_reload_groups)
 
         view_menu = menubar.addMenu("Affichage")
         view_menu.addAction("Reset layout", self._on_reset_layout)
@@ -479,6 +487,52 @@ class MainWindow(QMainWindow):
         from ark.core.layout import auto_layout_scene
         auto_layout_scene(self.scene)
         self.statusBar().showMessage("Auto-layout appliqué", 2000)
+
+    def _on_save_selection_as_group(self):
+        """Phase 31 — Ctrl+G : enregistre sélection comme groupe réutilisable."""
+        from ark.ui.node_editor.node_item import NodeItem
+        from ark.ui.dialogs.save_group_dialog import SaveGroupDialog
+        from ark.core.groups import (
+            serialize_group, save_group, register_groups,
+        )
+        from ark.core.graph_compiler import HANDLERS
+
+        sel = [it for it in self.scene.selectedItems() if isinstance(it, NodeItem)]
+        if not sel:
+            self.statusBar().showMessage("Sélectionne d'abord ≥1 node", 2500)
+            return
+        dlg = SaveGroupDialog(self, n_selected=len(sel))
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        meta = dlg.get_payload()
+        try:
+            payload = serialize_group(self.scene, sel,
+                                          name=meta["name"], title=meta["title"],
+                                          category=meta["category"],
+                                          description=meta["description"])
+            path = save_group(payload)
+            # Auto-register live
+            registry = self.scene.registry
+            n = register_groups(registry, HANDLERS)
+            # Refresh palette (sans relance app)
+            if hasattr(self, "palette") and hasattr(self.palette, "refresh"):
+                self.palette.refresh()
+            self.statusBar().showMessage(
+                f"Groupe '{meta['name']}' enregistré → {path}  "
+                f"({n} groupes chargés)", 4000)
+        except Exception as e:
+            self.statusBar().showMessage(f"Erreur save group : {e}", 5000)
+
+    def _on_reload_user_groups(self):
+        """Recharge ~/.ark/groups/ sans redémarrer."""
+        from ark.core.groups import register_groups
+        from ark.core.graph_compiler import HANDLERS
+        registry = self.scene.registry
+        n = register_groups(registry, HANDLERS)
+        if hasattr(self, "palette") and hasattr(self.palette, "refresh"):
+            self.palette.refresh()
+        self.statusBar().showMessage(f"{n} groupes chargés depuis ~/.ark/groups/",
+                                          3000)
 
     def _on_copy(self):
         from ark.ui.node_editor.node_item import NodeItem
