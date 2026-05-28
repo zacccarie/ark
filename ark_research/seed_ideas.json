@@ -1,0 +1,42 @@
+[
+  {
+    "Name": "metamorph_template_bake_off",
+    "Title": "Comparative Auto-Mutate Study: M1 CriticalGrowNet vs Mutable VG vs Static MLP on MNIST",
+    "Experiment": "Compile three ARK templates (mlp_mnist static, vg_mutable, metamorph_m1) via the agent_api CLI, train each for 5 epochs on MNIST with auto_mutate enabled, log val_acc/params trajectories, plot via SciViz node. Identify whether SOC criticality (target_beta=-2) outperforms heuristic mutation triggers in sample efficiency.",
+    "Interestingness": 7,
+    "Feasibility": 8,
+    "Novelty": 5
+  },
+  {
+    "Name": "graph_topology_lottery",
+    "Title": "Random Subgraph Sampling for Sparse Subnetwork Discovery in ARK",
+    "Experiment": "Build a large ARK graph (50 nodes mixed linear/relu/dropout/residual_add). Randomly mask k% of edges before compile. Train each masked variant for N steps. Track which sparse subnetworks reach baseline accuracy fastest. Test lottery-ticket hypothesis at the graph-composition level rather than weight level.",
+    "Interestingness": 8,
+    "Feasibility": 6,
+    "Novelty": 7
+  },
+  {
+    "Name": "observer_triggered_curriculum",
+    "Title": "Self-Curriculum via ARK Observer Nodes: Difficulty Ramp Triggered by Loss Plateau",
+    "Experiment": "Wire an Observer node monitoring training loss with a Trigger node that escalates dataset difficulty (e.g., MNIST→Fashion-MNIST→CIFAR10) when loss plateau is detected (slope below threshold for 50 steps). Measure final accuracy vs static curriculum baseline.",
+    "Interestingness": 7,
+    "Feasibility": 5,
+    "Novelty": 6
+  },
+  {
+    "Name": "dyadic_mirror_cross_dataset",
+    "Title": "Mead-Vygotsky Dyadic Mirror (M5) as Implicit Multi-Task Learner",
+    "Experiment": "Use DyadicMirror node (M5) with agent A on MNIST and agent B on Fashion-MNIST sharing cross-prediction loss. Compare to two independent classifiers. Hypothesis: cross-prediction acts as regularizer improving generalization on a third held-out task (KMNIST).",
+    "Interestingness": 8,
+    "Feasibility": 4,
+    "Novelty": 7
+  },
+  {
+    "Name": "node_editor_complexity_bias",
+    "Title": "Does Visual Node Editor Workflow Bias Architects Toward Certain Topologies?",
+    "Experiment": "Auto-generate 100 ARK graphs via random walks in the node palette (sampling from registry by_category). Compile each, measure graph statistics (depth, branching factor, residual density). Compare distribution to ARK templates curated by hand. Quantify selection bias of the GUI affordances on architecture space exploration.",
+    "Interestingness": 6,
+    "Feasibility": 7,
+    "Novelty": 8
+  }
+]
