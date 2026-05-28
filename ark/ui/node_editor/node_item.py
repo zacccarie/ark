@@ -90,9 +90,25 @@ class NodeItem(QGraphicsItem):
             sock.setPos(self.width, self.HEADER_H + self.ROW_H * i + self.ROW_H / 2)
 
     # ------------------------------------------------------------
-    # Paint
+    # Paint — Phase 50d try/except global (Python exception dans paint
+    # cause SIGSEGV via PySide6 bridge)
     # ------------------------------------------------------------
     def paint(self, painter, option, widget=None):
+        try:
+            self._paint_safe(painter, option, widget)
+        except Exception as e:
+            import sys
+            import traceback
+            print(f"[NodeItem.paint EXCEPTION] {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            # Fallback minimal : juste fill rect rouge pour debug visuel
+            try:
+                painter.fillRect(QRectF(0, 0, self.width, max(self.height, 30)),
+                                  QColor("#3A2A05"))
+            except Exception:
+                pass
+
+    def _paint_safe(self, painter, option, widget=None):
         rect = QRectF(0, 0, self.width, self.height)
         path = QPainterPath()
         path.addRoundedRect(rect, T.R_MEDIUM, T.R_MEDIUM)
