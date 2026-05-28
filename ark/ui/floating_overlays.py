@@ -137,22 +137,29 @@ class ActionBar(QWidget):
         h.setContentsMargins(8, 6, 8, 6)
         h.setSpacing(6)
 
-        # Extensions button (ghost)
-        self.btn_ext = QPushButton("⊞  Gérer les extensions", self)
-        self.btn_ext.setProperty("role", "ghost")
+        # Extensions button — icon only pour compact
+        self.btn_ext = QPushButton("⊞", self)
+        self.btn_ext.setFixedSize(36, 36)
+        self.btn_ext.setToolTip("Gérer les extensions / templates")
+        self.btn_ext.setStyleSheet(
+            f"QPushButton {{"
+            f"  background: transparent;"
+            f"  border: 1px solid {T.BORDER_DEFAULT};"
+            f"  border-radius: {T.R_MEDIUM}px;"
+            f"  color: {T.FG_SECONDARY};"
+            f"  font-size: 16px;"
+            f"}}"
+            f"QPushButton:hover {{ background: {T.BG_HIGHLIGHT}; "
+            f"  color: {T.FG_PRIMARY}; }}"
+        )
         self.btn_ext.clicked.connect(self.extensions_clicked.emit)
         h.addWidget(self.btn_ext)
-
-        # Separator
-        sep1 = QFrame(self); sep1.setFrameShape(QFrame.Shape.VLine)
-        sep1.setStyleSheet(f"color: {T.BORDER_DEFAULT};")
-        h.addWidget(sep1)
 
         # Batch count spinbox
         self.batch_spin = QSpinBox(self)
         self.batch_spin.setRange(1, 1000)
         self.batch_spin.setValue(1)
-        self.batch_spin.setFixedWidth(64)
+        self.batch_spin.setFixedWidth(80)
         self.batch_spin.setToolTip("Nombre d'itérations / batches")
         h.addWidget(self.batch_spin)
 
@@ -176,10 +183,12 @@ class ActionBar(QWidget):
         self.btn_run.clicked.connect(self.compile_clicked.emit)
         h.addWidget(self.btn_run)
 
-        # Mode dropdown next to run
+        # Mode dropdown next to run — width auto adaptée au contenu
         self.mode_combo = QComboBox(self)
         self.mode_combo.addItems(["Compiler", "Entraîner", "Bench"])
-        self.mode_combo.setFixedWidth(110)
+        self.mode_combo.setMinimumWidth(140)
+        self.mode_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
         h.addWidget(self.mode_combo)
 
@@ -200,13 +209,18 @@ class ActionBar(QWidget):
         self.btn_cancel.clicked.connect(self.stop_clicked.emit)
         h.addWidget(self.btn_cancel)
 
-        # Active count badge
-        self.active_lbl = QLabel("0 actif(s)", self)
+        # Active count badge — compact + contraste plus fort
+        self.active_lbl = QLabel("0", self)
+        self.active_lbl.setToolTip("Tâches actives")
         self.active_lbl.setStyleSheet(
-            f"color: {T.FG_TERTIARY}; "
+            f"color: {T.FG_SECONDARY}; "
             f"font-family: {T.FONT_MONO_FAMILY}; "
-            f"font-size: {T.FS_LABEL}px; "
-            f"padding: 0 12px;"
+            f"font-size: {T.FS_BODY}px; "
+            f"font-weight: 700; "
+            f"padding: 4px 10px; "
+            f"background: {T.BG_PANEL_RAISED}; "
+            f"border: 1px solid {T.BORDER_DEFAULT}; "
+            f"border-radius: {T.R_MEDIUM}px;"
         )
         h.addWidget(self.active_lbl)
 
@@ -232,7 +246,7 @@ class ActionBar(QWidget):
         self.btn_run.setText(labels.get(mode, "▶  Run"))
 
     def set_active_count(self, n: int):
-        self.active_lbl.setText(f"{n} actif(s)")
+        self.active_lbl.setText(str(n))
 
 
 # ============================================================
@@ -277,9 +291,10 @@ class StatsOverlay(QWidget):
     def _make_lbl(self, text):
         l = QLabel(text, self)
         l.setStyleSheet(
-            f"color: {T.FG_TERTIARY}; "
+            f"color: {T.FG_SECONDARY}; "
             f"font-family: {T.FONT_MONO_FAMILY}; "
-            f"font-size: 10px; "
+            f"font-size: 11px; "
+            f"font-weight: 600; "
             f"background: transparent;"
         )
         return l
@@ -337,10 +352,12 @@ class ViewControls(QWidget):
         h.setContentsMargins(6, 4, 6, 4)
         h.setSpacing(4)
 
-        # Tool selector
+        # Tool selector — width auto évite truncation
         self.tool_combo = QComboBox(self)
-        self.tool_combo.addItems(["▶  Select", "✋  Pan", "◇  Box select"])
-        self.tool_combo.setFixedWidth(120)
+        self.tool_combo.addItems(["Select", "Pan", "Box select"])
+        self.tool_combo.setMinimumWidth(140)
+        self.tool_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.tool_combo.currentTextChanged.connect(
             lambda t: self.tool_changed.emit(t.split()[-1].lower()))
         h.addWidget(self.tool_combo)

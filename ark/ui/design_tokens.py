@@ -25,12 +25,12 @@ BG_OVERLAY = "#3F3F46"        # menus, popups (zinc-700)
 BG_HIGHLIGHT = "#52525B"      # hover (zinc-600)
 BG_INPUT = "#0E0E11"           # form fields (très profond)
 
-# Texte : 5 niveaux zinc
-FG_PRIMARY = "#FAFAFA"
-FG_SECONDARY = "#D4D4D8"     # zinc-300
-FG_TERTIARY = "#A1A1AA"      # zinc-400
-FG_DISABLED = "#52525B"      # zinc-600
-FG_INVERSE = "#09090B"       # texte sur fond clair/vert
+# Texte : 5 niveaux zinc — contrastes WCAG AA-friendly sur fonds dark
+FG_PRIMARY = "#FAFAFA"       # zinc-50
+FG_SECONDARY = "#E4E4E7"     # zinc-200 (était zinc-300 trop sombre)
+FG_TERTIARY = "#B8B8C0"      # zinc-350 custom (était zinc-400 limite ton-sur-ton)
+FG_DISABLED = "#71717A"      # zinc-500 (était zinc-600 invisible)
+FG_INVERSE = "#09090B"
 
 # Bordures premium multi-tier
 BORDER_SUBTLE = "#27272A"    # zinc-800
@@ -95,9 +95,9 @@ SOCKET_ANY = "#71717A"
 # Typographie premium
 # ============================================================
 
-# Display = titres (PP Neue Machina si dispo, sinon Inter)
-FONT_DISPLAY_FAMILY = '"PP Neue Machina", "Inter", "Helvetica Neue", "Arial", sans-serif'
-FONT_SANS_FAMILY = '"Inter", "Helvetica Neue", "Arial", "Segoe UI", sans-serif'
+# Display + sans = Arial (request user Phase 44, garde compat système Mac)
+FONT_DISPLAY_FAMILY = '"Arial", "Helvetica Neue", "Helvetica", sans-serif'
+FONT_SANS_FAMILY = '"Arial", "Helvetica Neue", "Helvetica", sans-serif'
 FONT_MONO_FAMILY = '"Menlo", "JetBrains Mono", "SF Mono", "Consolas", monospace'
 
 # Tailles (px) — premium scale

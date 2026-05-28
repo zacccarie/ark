@@ -295,11 +295,68 @@ def build_qss() -> str:
         border: 2px solid {T.PRIMARY};
         padding: {T.S_3 - 1}px {T.S_4 - 1}px;
     }}
+
+    /* QSpinBox arrows agrandies + visibles */
+    QSpinBox, QDoubleSpinBox {{
+        padding-right: 28px;
+    }}
+    QSpinBox::up-button, QDoubleSpinBox::up-button {{
+        subcontrol-origin: border;
+        subcontrol-position: top right;
+        width: 22px;
+        height: 18px;
+        border-left: 1px solid {T.BORDER_DEFAULT};
+        border-bottom: 1px solid {T.BORDER_DEFAULT};
+        border-top-right-radius: {T.R_MEDIUM}px;
+        background: {T.BG_PANEL_RAISED};
+    }}
+    QSpinBox::down-button, QDoubleSpinBox::down-button {{
+        subcontrol-origin: border;
+        subcontrol-position: bottom right;
+        width: 22px;
+        height: 18px;
+        border-left: 1px solid {T.BORDER_DEFAULT};
+        border-bottom-right-radius: {T.R_MEDIUM}px;
+        background: {T.BG_PANEL_RAISED};
+    }}
+    QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+    QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+        background: {T.PRIMARY_DIM};
+    }}
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+        image: none;
+        width: 10px; height: 10px;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-bottom: 6px solid {T.FG_SECONDARY};
+    }}
+    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+        image: none;
+        width: 10px; height: 10px;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid {T.FG_SECONDARY};
+    }}
+
+    QComboBox {{
+        padding-right: 32px;
+    }}
     QComboBox::drop-down {{
-        border: none; width: 24px;
+        border-left: 1px solid {T.BORDER_DEFAULT};
+        width: 28px;
+        background: {T.BG_PANEL_RAISED};
+        border-top-right-radius: {T.R_MEDIUM}px;
+        border-bottom-right-radius: {T.R_MEDIUM}px;
+    }}
+    QComboBox::drop-down:hover {{
+        background: {T.PRIMARY_DIM};
     }}
     QComboBox::down-arrow {{
-        width: 10px; height: 10px;
+        image: none;
+        width: 12px; height: 12px;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid {T.FG_SECONDARY};
     }}
     QComboBox QAbstractItemView {{
         background-color: {T.BG_OVERLAY};
@@ -308,7 +365,7 @@ def build_qss() -> str:
         selection-color: {T.PRIMARY};
         border: 1px solid {T.BORDER_DEFAULT};
         border-radius: {T.R_MEDIUM}px;
-        padding: {T.S_1}px;
+        padding: {T.S_2}px;
         outline: 0;
     }}
 
@@ -346,18 +403,30 @@ def build_qss() -> str:
         font-weight: 700;
     }}
 
-    /* Tabs premium */
+    /* Tabs premium — fix bg gris/silver Qt natif */
+    QTabWidget {{
+        background-color: {T.BG_PANEL};
+    }}
     QTabWidget::pane {{
         border: 1px solid {T.BORDER_DEFAULT};
         background-color: {T.BG_PANEL};
         border-radius: {T.R_MEDIUM}px;
         top: -1px;
     }}
+    QTabWidget::tab-bar {{
+        background-color: {T.BG_PANEL};
+        alignment: left;
+    }}
+    QTabBar {{
+        background-color: {T.BG_PANEL};
+        border: none;
+        qproperty-drawBase: 0;
+    }}
     QTabBar::tab {{
-        background-color: transparent;
+        background-color: {T.BG_PANEL};
         color: {T.FG_TERTIARY};
         padding: {T.S_3}px {T.S_4}px;
-        border: 1px solid transparent;
+        border: none;
         border-bottom: 2px solid transparent;
         font-family: {T.FONT_DISPLAY_FAMILY};
         font-size: {T.FS_LABEL}px;
@@ -365,15 +434,16 @@ def build_qss() -> str:
         letter-spacing: 1.5px;
         font-weight: 700;
         min-width: 80px;
+        margin: 0;
     }}
     QTabBar::tab:selected {{
+        background-color: {T.BG_PANEL};
         color: {T.PRIMARY};
         border-bottom: 2px solid {T.PRIMARY};
     }}
     QTabBar::tab:hover:!selected {{
         color: {T.FG_PRIMARY};
         background-color: {T.BG_HIGHLIGHT};
-        border-radius: {T.R_SMALL}px;
     }}
 
     /* ScrollBars premium */
