@@ -53,7 +53,9 @@ cd ~/claude-code-projects/ark
 uv venv --python 3.11
 source .venv/bin/activate
 uv pip install -e .
-python -m ark
+ark                       # via entry point pyproject
+# ou
+./bin/ark                 # via launcher shell standalone
 ```
 
 ## Interactions node editor

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# ARK launcher — Phase 43
+# Lance ARK avec le bon venv et environnement Qt.
+#
+# Usage : ark [args...]
+# Install global : ln -s $(pwd)/bin/ark /usr/local/bin/ark
+
+set -e
+
+# Détection root projet (suit symlinks)
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# Si bin/ark dans projet → root = dirname(bin)
+PROJECT_ROOT="$(dirname "$SCRIPT_PATH")"
+
+# Fallback : ARK_HOME env var ou path par défaut
+if [ ! -d "$PROJECT_ROOT/ark" ]; then
+    PROJECT_ROOT="${ARK_HOME:-$HOME/claude-code-projects/ark}"
+fi
+
+if [ ! -d "$PROJECT_ROOT/ark" ]; then
+    echo "ERREUR : impossible de localiser le repo ARK." >&2
+    echo "Set ARK_HOME=/path/to/ark ou lance depuis le repo." >&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+# Active venv si présent
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+elif [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
+# Lance ARK via entry point Python
+exec python -m ark "$@"

@@ -471,14 +471,16 @@ def _norm_term(t: str) -> str:
 
 
 def _merge_glossary_data() -> None:
-    """Importe les 400+ concepts de glossary_data dans GLOSSARY (idempotent)."""
+    """Importe les concepts dans GLOSSARY + auto-expand 500+ chars (Phase 43)."""
     try:
         from ark.core.glossary_data import CONCEPTS
         from ark.core.didactic_data import DIDACTIC_EXTRA
+        from ark.core.content_expander import expand
     except ImportError:
         DIDACTIC_EXTRA = {}
         try:
             from ark.core.glossary_data import CONCEPTS
+            from ark.core.content_expander import expand
         except ImportError:
             return
     existing = {_norm_term(e.term) for e in GLOSSARY}
@@ -489,7 +491,8 @@ def _merge_glossary_data() -> None:
             continue
         seen_new.add(norm)
         short = c.get("short", "") or c["title"]
-        long_ = c.get("long", "") or short or c["title"]
+        # Phase 43 : expand long jusqu'à 500+ chars
+        long_ = expand(c, min_chars=500)
         # Recherche enrichissement didactique
         extra = DIDACTIC_EXTRA.get(c["name"], {})
         GLOSSARY.append(GlossaryEntry(
@@ -506,7 +509,38 @@ def _merge_glossary_data() -> None:
         ))
 
 
+def _expand_existing_entries() -> None:
+    """Phase 43 : expand aussi les entrées historiques (avant glossary_data) qui sont
+    encore en-dessous de 500 chars. Replace in-place via remplacement."""
+    try:
+        from ark.core.content_expander import expand
+        from ark.core.didactic_data import DIDACTIC_EXTRA
+    except ImportError:
+        return
+    for i, e in enumerate(GLOSSARY):
+        if len(e.long) >= 500:
+            continue
+        # Build pseudo-concept dict for expander
+        fake_concept = {
+            "title": e.term,
+            "name": e.term.lower().replace(" ", "_"),
+            "category": e.category,
+            "short": e.short,
+            "long": e.long,
+            "equation": e.equation,
+            "related": e.related,
+            "kind": "concept",  # assume concept par défaut
+        }
+        new_long = expand(fake_concept, min_chars=500)
+        GLOSSARY[i] = GlossaryEntry(
+            term=e.term, category=e.category, short=e.short, long=new_long,
+            related=e.related, intuition=e.intuition, equation=e.equation,
+            when_to_use=e.when_to_use, example=e.example, pitfall=e.pitfall,
+        )
+
+
 _merge_glossary_data()
+_expand_existing_entries()
 
 
 def by_category() -> dict[str, list[GlossaryEntry]]:
