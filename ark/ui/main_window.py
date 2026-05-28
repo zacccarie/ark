@@ -612,11 +612,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Layout chargé : {path}", 2000)
 
     def _on_compile(self):
-        """Phase 49 : statuts visuels par node + GlobalProgress animée."""
+        """Phase 49 : statuts visuels par node + GlobalProgress animée.
+        Phase 51 : logs verbose détaillés."""
         from ark.core.graph_compiler import compile_scene, GraphCompileError
         from PySide6.QtCore import QTimer
+        import time
 
         nodes = list(self.scene.nodes())
+        self.terminal.append_log(f"[compile] Start · {len(nodes)} nodes")
+        self.terminal.append_log(f"[compile] Topo sort + handlers...")
         # Reset all to compiling
         for n in nodes:
             n.set_status("compiling")
@@ -627,9 +631,35 @@ class MainWindow(QMainWindow):
             self._global_progress.raise_()
             self._global_progress.set_progress(0.0, "Compile", "compiling")
 
-        # Animate progress per node sequentially (instant compile but UI feedback)
         try:
+            t0 = time.perf_counter()
             self._compiled = compile_scene(self.scene, num_classes=None)
+            t_compile = (time.perf_counter() - t0) * 1000
+            self.terminal.append_log(f"[compile] Graph built in {t_compile:.1f}ms")
+            self.terminal.append_log(f"[compile] Input  : {self._compiled.input_shape}")
+            self.terminal.append_log(f"[compile] Output : {self._compiled.output_shape}")
+            # Détaille par node type
+            from collections import Counter
+            types = Counter(n.spec.name for n in nodes)
+            for t, n in sorted(types.items()):
+                self.terminal.append_log(f"[compile]   {n}× {t}")
+            # Run pipeline forward immediate si scene a un loader (source) sans input externe
+            if hasattr(self._compiled.model, "modules_dict"):
+                src_count = len(getattr(self._compiled, "input_shape", ()))
+                self.terminal.append_log(f"[compile] Running forward pipeline...")
+                try:
+                    import torch
+                    t_fwd = time.perf_counter()
+                    dummy = torch.zeros(1, 4, 64, 64)
+                    out = self._compiled.model(dummy)
+                    if isinstance(out, tuple):
+                        out = out[0]
+                    fwd_t = (time.perf_counter() - t_fwd) * 1000
+                    self.terminal.append_log(
+                        f"[compile] Forward OK · {fwd_t:.0f}ms · "
+                        f"out shape={tuple(out.shape) if hasattr(out, 'shape') else type(out).__name__}")
+                except Exception as e:
+                    self.terminal.append_log(f"[compile] Forward warning : {e}")
             # Iterate nodes : set OK pour ceux qui sont dans modules_dict
             modules_dict = getattr(self._compiled.model, "modules_dict", {})
             compiled_ids = set(modules_dict.keys()) if hasattr(modules_dict, "keys") else set()

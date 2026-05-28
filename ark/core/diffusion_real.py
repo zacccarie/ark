@@ -194,7 +194,6 @@ class KSamplerReal(nn.Module):
         sched.set_timesteps(self.steps, device=device)
 
         g = torch.Generator(device="cpu").manual_seed(self.seed)
-        # Init latent : noise pur si latent vide, sinon partial denoise
         noise = torch.randn(latent.shape, generator=g, device="cpu").to(device, dtype)
         if latent.abs().sum() < 1e-6:
             lat = noise * sched.init_noise_sigma
@@ -203,17 +202,24 @@ class KSamplerReal(nn.Module):
 
         pos = positive.to(device, dtype)
         neg = negative.to(device, dtype) if negative is not None else torch.zeros_like(pos)
-        # Concat pour classifier-free guidance
         embeds = torch.cat([neg, pos], dim=0)
 
+        # Phase 51 : step callback pour logs verbose
+        step_cb = getattr(self, "_step_callback", None)
+
         with torch.no_grad():
-            for t in sched.timesteps:
+            for i, t in enumerate(sched.timesteps):
                 lat_in = torch.cat([lat, lat], dim=0)
                 lat_in = sched.scale_model_input(lat_in, t)
                 noise_pred = pipe.unet(lat_in, t, encoder_hidden_states=embeds).sample
                 neg_pred, pos_pred = noise_pred.chunk(2)
                 noise_pred = neg_pred + self.cfg * (pos_pred - neg_pred)
                 lat = sched.step(noise_pred, t, lat).prev_sample
+                if step_cb is not None:
+                    try:
+                        step_cb(i + 1, self.steps, float(t))
+                    except Exception:
+                        pass
 
         return lat
 

@@ -33,6 +33,9 @@ class NodeItem(QGraphicsItem):
         self._hover_scale = 1.0  # animé subtilement sur hover
         # Phase 49 : progress par node 0..1 (animé loading si > 0)
         self.progress: float = 0.0
+        # Phase 51 : preview image (tensor C, H, W) pour save_image nodes
+        self._preview_image_tensor = None
+        self._preview_qimage = None
 
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -270,7 +273,19 @@ class NodeItem(QGraphicsItem):
                              f"⟨ preview {self.spec.name} ⟩")
 
     def _paint_image_placeholder(self, painter, rect):
-        # Damier subtil pour signaler "image"
+        # Phase 51 : si preview image dispo, render scaled
+        if self._preview_qimage is not None:
+            try:
+                from PySide6.QtCore import QRectF as _QR
+                painter.drawImage(rect, self._preview_qimage)
+                # Border 1px subtil pour cadre
+                painter.setPen(QPen(QColor(T.PRIMARY), 1))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect)
+                return
+            except Exception:
+                pass
+        # Damier subtil pour signaler "image" (pas de preview encore)
         from PySide6.QtCore import QRectF as _QR
         tile = 6
         c1 = QColor(T.BG_PANEL)
@@ -419,6 +434,30 @@ class NodeItem(QGraphicsItem):
         """Phase 49 : update progress 0..1 (visible si status compiling/training)."""
         self.progress = max(0.0, min(1.0, float(value)))
         self.update()
+
+    def set_preview_image(self, tensor):
+        """Phase 51 : tensor (C, H, W) → QImage preview thumbnail."""
+        from PySide6.QtGui import QImage
+        try:
+            if tensor is None:
+                self._preview_image_tensor = None
+                self._preview_qimage = None
+                self.update()
+                return
+            self._preview_image_tensor = tensor
+            arr = tensor.clamp(0, 1).permute(1, 2, 0).cpu().numpy()
+            import numpy as np
+            arr = (arr * 255).astype(np.uint8)
+            if arr.shape[2] == 4:
+                arr = arr[..., :3]
+            h, w, c = arr.shape
+            bytes_per_line = c * w
+            qimg = QImage(arr.tobytes(), w, h, bytes_per_line,
+                            QImage.Format.Format_RGB888).copy()
+            self._preview_qimage = qimg
+            self.update()
+        except Exception:
+            self._preview_qimage = None
 
     def _build_tooltip(self) -> str:
         """HTML tooltip riche : description + I/O + erreur."""

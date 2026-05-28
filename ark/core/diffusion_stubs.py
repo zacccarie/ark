@@ -183,6 +183,10 @@ class SaveImageStub(nn.Module):
         super().__init__()
         self.prefix = prefix
         self.out_dir = out_dir
+        # Phase 51 : store last image for preview dans NodeItem
+        self.last_image_tensor = None
+        self.last_image_path = None
+
     def forward(self, image):
         from pathlib import Path
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
@@ -195,9 +199,23 @@ class SaveImageStub(nn.Module):
             img = image[0].clamp(0, 1).permute(1, 2, 0).cpu().numpy()
             arr = (img * 255).astype("uint8")
             Image.fromarray(arr).save(path)
+            self.last_image_tensor = image[0].detach().cpu()
+            self.last_image_path = str(path)
+            # Notify NodeItem via _ark_node_id si présent
+            self._notify_node()
         except Exception:
             torch.save(image, str(path.with_suffix(".pt")))
         return image  # pass-through
+
+    def _notify_node(self):
+        """Push image vers NodeItem si _ark_node_id présent."""
+        nid = getattr(self, "_ark_node_id", None)
+        node_ref = getattr(self, "_ark_node_ref", None)
+        if node_ref is not None:
+            try:
+                node_ref.set_preview_image(self.last_image_tensor)
+            except Exception:
+                pass
 
 
 class LoRALoaderStub(nn.Module):
@@ -280,8 +298,12 @@ def h_load_image(node, in_shapes):
 
 
 def h_save_image(node, in_shapes):
-    return SaveImageStub(node.params.get("prefix", "ark_"),
-                            node.params.get("dir", "./output")), (3, -1, -1)
+    m = SaveImageStub(node.params.get("prefix", "ark_"),
+                          node.params.get("dir", "./output"))
+    # Phase 51 : injection node ref pour preview thumbnail callback
+    m._ark_node_id = getattr(node, "id", "save_image")
+    m._ark_node_ref = node
+    return m, (3, -1, -1)
 
 
 def h_lora_loader(node, in_shapes):
