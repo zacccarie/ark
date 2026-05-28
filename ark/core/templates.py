@@ -243,12 +243,15 @@ def template_tiny_llm_demo() -> dict:
                   {"load_name": "tiny_llm_demo",
                    "prompt": "the cat ",
                    "max_new": 100, "temperature": 0.8, "top_k": 10})
+    tv = _node("text_viewer", 900, 200,
+                 {"title": "Generated Text", "max_chars": 4000})
     conns = [
         _conn(corpus, model),
         _conn(model, gen),
+        _conn(gen, tv),
     ]
     return _wrap("TinyLLM Demo",
-                  [corpus, model, gen], conns,
+                  [corpus, model, gen, tv], conns,
                   tags=["template", "llm", "transformer", "tiny"])
 
 

@@ -658,6 +658,36 @@ class MainWindow(QMainWindow):
                     self.terminal.append_log(
                         f"[compile] Forward OK · {fwd_t:.0f}ms · "
                         f"out shape={tuple(out.shape) if hasattr(out, 'shape') else type(out).__name__}")
+                    # Phase 55 : log displayable outputs (viewers + tiny_llm_generate)
+                    md = getattr(self._compiled.model, "modules_dict", {})
+                    # Push to Inspector for live display
+                    try:
+                        self.inspector.set_modules_dict(md)
+                    except Exception:
+                        pass
+                    nodes_by_id = {n.id: n for n in nodes}
+                    for nid, mod in md.items():
+                        node = nodes_by_id.get(nid)
+                        title = node.spec.title if node else nid[:8]
+                        if hasattr(mod, "last_generated") and mod.last_generated:
+                            self.terminal.append_log(
+                                f"[output] {title} → \"{mod.last_generated}\"")
+                        if hasattr(mod, "last_text") and mod.last_text:
+                            preview = mod.last_text[:200].replace("\n", " ")
+                            self.terminal.append_log(
+                                f"[output] {title} → \"{preview}\"")
+                        if hasattr(mod, "last_value") and mod.last_value not in ("", None):
+                            self.terminal.append_log(
+                                f"[output] {title} = {mod.last_value}")
+                        if hasattr(mod, "last_predictions") and mod.last_predictions:
+                            top = ", ".join(
+                                f"{p['label']}({p['prob']:.3f})"
+                                for p in mod.last_predictions[:5])
+                            self.terminal.append_log(
+                                f"[output] {title} top-K: {top}")
+                        if hasattr(mod, "last_path") and mod.last_path:
+                            self.terminal.append_log(
+                                f"[output] {title} → {mod.last_path}")
                 except Exception as e:
                     self.terminal.append_log(f"[compile] Forward warning : {e}")
             # Iterate nodes : set OK pour ceux qui sont dans modules_dict

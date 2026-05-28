@@ -605,6 +605,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] tiny_llm specs failed: {e}", file=sys.stderr)
 
+    # Output Viewers (Phase 55)
+    try:
+        from ark.core.output_viewer_nodes import register_output_viewer_specs
+        register_output_viewer_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] output viewer specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

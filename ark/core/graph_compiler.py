@@ -642,6 +642,18 @@ def _register_tiny_llm():
 _register_tiny_llm()
 
 
+# Output Viewers (Phase 55)
+def _register_output_viewers():
+    try:
+        from ark.core.output_viewer_nodes import register_output_viewer_handlers
+        register_output_viewer_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] output viewer handlers failed: {e}", file=sys.stderr)
+
+_register_output_viewers()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

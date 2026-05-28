@@ -153,6 +153,32 @@ class InspectorPanel(QWidget):
         v.addWidget(self._preview_label)
         self._preview_label.hide()
 
+        # Phase 55 : live output (text/value/predictions) après compile
+        self._output_host = QWidget(self)
+        self._output_layout = QVBoxLayout(self._output_host)
+        self._output_layout.setContentsMargins(0, 0, 0, T.S_2)
+        self._output_layout.setSpacing(T.S_1)
+        self._output_title = QLabel("Live Output", self._output_host)
+        self._output_title.setStyleSheet(
+            f"font-size: {T.FS_MICRO}px; color: {T.SUCCESS}; "
+            f"text-transform: uppercase; letter-spacing: 1px; font-weight: 700;")
+        self._output_layout.addWidget(self._output_title)
+        self._output_text = QPlainTextEdit("", self._output_host)
+        self._output_text.setReadOnly(True)
+        self._output_text.setMaximumHeight(220)
+        self._output_text.setStyleSheet(
+            f"font-family: 'Menlo','Courier New',monospace; "
+            f"font-size: {T.FS_LABEL}px; color: {T.FG_PRIMARY}; "
+            f"background-color: {T.BG_DEEP}; "
+            f"border: 1px solid {T.SUCCESS}; "
+            f"border-radius: {T.R_MEDIUM}px; padding: 6px;")
+        self._output_layout.addWidget(self._output_text)
+        v.addWidget(self._output_host)
+        self._output_host.hide()
+
+        # Stored compiled modules_dict (set by MainWindow post-compile)
+        self._modules_dict: dict = {}
+
         # Chart placeholder (visible seulement pour nodes observer)
         self._chart_host = QWidget(self)
         from PySide6.QtWidgets import QVBoxLayout as _VBL
@@ -185,6 +211,8 @@ class InspectorPanel(QWidget):
         self._populate_info_block(node.spec)
         # Phase 52 : preview thumbnail si présent
         self._update_preview(node)
+        # Phase 55 : live output (text_viewer, number_display, tiny_llm_generate, top_k)
+        self._update_live_output(node)
         # Chart pour observer / vg_block
         if node.spec.name == "observer":
             self._metric_chart = MetricChart(self._chart_host, width=260, height=140)
@@ -370,6 +398,41 @@ class InspectorPanel(QWidget):
             self._preview_label.show()
         except Exception:
             self._preview_label.hide()
+
+    def set_modules_dict(self, modules_dict: dict):
+        """Phase 55 : appelé par MainWindow post-compile pour exposer outputs."""
+        self._modules_dict = modules_dict or {}
+        # Refresh affichage si node actuel concerné
+        if self._node is not None:
+            self._update_live_output(self._node)
+
+    def _update_live_output(self, node):
+        """Phase 55 : affiche last_text/last_value/last_predictions du module compilé."""
+        if not self._modules_dict or node is None:
+            self._output_host.hide()
+            return
+        mod = self._modules_dict.get(node.id)
+        if mod is None:
+            self._output_host.hide()
+            return
+        lines = []
+        if hasattr(mod, "last_generated") and mod.last_generated:
+            lines.append(f"▸ generated:\n{mod.last_generated}")
+        if hasattr(mod, "last_text") and mod.last_text:
+            lines.append(f"▸ text:\n{mod.last_text}")
+        if hasattr(mod, "last_value") and mod.last_value not in ("", None):
+            lines.append(f"▸ value: {mod.last_value}")
+        if hasattr(mod, "last_predictions") and mod.last_predictions:
+            lines.append("▸ top-K:")
+            for p in mod.last_predictions[:10]:
+                lines.append(f"  #{p['rank']:>2} {p['label']:<24} {p['prob']:.4f}")
+        if hasattr(mod, "last_path") and mod.last_path:
+            lines.append(f"▸ output file:\n{mod.last_path}")
+        if not lines:
+            self._output_host.hide()
+            return
+        self._output_text.setPlainText("\n\n".join(lines))
+        self._output_host.show()
 
     def push_live_metrics(self, node_id: str, metrics: dict):
         """Push depuis trainer.observations vers chart si node sélectionné."""
