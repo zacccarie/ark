@@ -10,3 +10,9 @@ models/
 checkpoints/
 *.log
 .ipynb_checkpoints/
+output/
+.vexp/
+vexp.toml
+dist/
+build/
+*.spec

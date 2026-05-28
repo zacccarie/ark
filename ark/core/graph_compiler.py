@@ -523,6 +523,17 @@ def _register_metamorph():
 _register_metamorph()
 
 
+# Research integration (Phase 27)
+def _register_research():
+    try:
+        from ark.core.research_bridge import register_research_handlers
+        register_research_handlers(HANDLERS)
+    except Exception:
+        pass
+
+_register_research()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

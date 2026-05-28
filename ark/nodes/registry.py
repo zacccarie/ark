@@ -307,17 +307,24 @@ def default_registry() -> NodeRegistry:
         category="Diffusion",
         outputs=[SocketSpec("model", "model"), SocketSpec("clip", "model"),
                   SocketSpec("vae", "model")],
-        params=[ParamSpec("checkpoint", "str", "model.safetensors"),
+        params=[ParamSpec("checkpoint", "str", "runwayml/stable-diffusion-v1-5"),
                  ParamSpec("device", "choice", "auto",
-                             options=["auto", "cuda", "mps", "cpu"])],
-        description="Charge un checkpoint diffusion (.safetensors/.ckpt) → model+clip+vae.",
+                             options=["auto", "cuda", "mps", "cpu"]),
+                 ParamSpec("real_backend", "bool", False)],
+        description="Charge un checkpoint diffusion. Stub par défaut. real_backend=True → diffusers HF réel (download ~4GB SD1.5).",
+        param_help={
+            "checkpoint": "Repo HF (ex. runwayml/stable-diffusion-v1-5) ou chemin .safetensors.",
+            "device": "auto = cuda > mps > cpu.",
+            "real_backend": "False = stub déterministe rapide. True = diffusers réel.",
+        },
     ))
     r.register(NodeSpec(
         name="clip_text_encode", title="CLIP Text Encode",
         category="Diffusion",
         inputs=[SocketSpec("clip", "model")],
         outputs=[SocketSpec("conditioning", "tensor")],
-        params=[ParamSpec("text", "multiline", "a serene cyberpunk cityscape, neon, rain")],
+        params=[ParamSpec("text", "multiline", "a serene cyberpunk cityscape, neon, rain"),
+                 ParamSpec("real_backend", "bool", False)],
         description="Encode prompt texte via CLIP → conditioning tensor.",
     ))
     r.register(NodeSpec(
@@ -350,7 +357,8 @@ def default_registry() -> NodeRegistry:
                                        "dpmpp_2m_sde", "ddim", "uni_pc"]),
                  ParamSpec("scheduler", "choice", "normal",
                              options=["normal", "karras", "exponential", "simple", "ddim_uniform"]),
-                 ParamSpec("denoise", "float", 1.0, min=0.0, max=1.0)],
+                 ParamSpec("denoise", "float", 1.0, min=0.0, max=1.0),
+                 ParamSpec("real_backend", "bool", False)],
         description="Sampling diffusion classique. Inspiré ComfyUI KSampler. Itère sur le latent en débruitant pas à pas.",
         param_help={
             "seed": "Graine PRNG. Même seed = même image.",
@@ -366,6 +374,7 @@ def default_registry() -> NodeRegistry:
         category="Diffusion",
         inputs=[SocketSpec("vae", "model"), SocketSpec("image", "image")],
         outputs=[SocketSpec("latent", "tensor")],
+        params=[ParamSpec("real_backend", "bool", False)],
         description="Image → latent (1/8 résolution). Pour img2img/inpainting.",
     ))
     r.register(NodeSpec(
@@ -373,6 +382,7 @@ def default_registry() -> NodeRegistry:
         category="Diffusion",
         inputs=[SocketSpec("vae", "model"), SocketSpec("latent", "tensor")],
         outputs=[SocketSpec("image", "image")],
+        params=[ParamSpec("real_backend", "bool", False)],
         description="Latent (post-KSampler) → image RGB pixel-space (×8 upsample).",
     ))
     r.register(NodeSpec(
@@ -493,6 +503,13 @@ def default_registry() -> NodeRegistry:
     try:
         from ark.core.metamorph_bridge import register_metamorph_specs
         register_metamorph_specs(r)
+    except Exception:
+        pass
+
+    # Research (Phase 27) — ai-scientist + autoresearch + sci-viz
+    try:
+        from ark.core.research_bridge import register_research_specs
+        register_research_specs(r)
     except Exception:
         pass
 

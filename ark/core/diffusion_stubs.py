@@ -226,14 +226,21 @@ class ControlNetApplyStub(nn.Module):
 # ============================================================
 
 def h_diffusion_model_loader(node, in_shapes):
-    m = DiffusionModelLoaderStub(node.params.get("checkpoint", "model.safetensors"),
-                                    node.params.get("device", "auto"))
-    # 3 outputs via tuple-of-shapes : socket 0=model, 1=clip, 2=vae
+    from ark.core.diffusion_real import make_diffusion_loader
+    m = make_diffusion_loader(
+        node.params.get("checkpoint", "model.safetensors"),
+        node.params.get("device", "auto"),
+        bool(node.params.get("real_backend", False)),
+    )
     return m, (("model_opaque",), ("clip_opaque",), ("vae_opaque",))
 
 
 def h_clip_text_encode(node, in_shapes):
-    return CLIPTextEncodeStub(node.params.get("text", "")), (1, 77, 768)
+    from ark.core.diffusion_real import make_clip_encode
+    return make_clip_encode(
+        node.params.get("text", ""),
+        bool(node.params.get("real_backend", False)),
+    ), (1, 77, 768)
 
 
 def h_empty_latent_image(node, in_shapes):
@@ -245,22 +252,26 @@ def h_empty_latent_image(node, in_shapes):
 
 
 def h_k_sampler(node, in_shapes):
-    return KSamplerStub(
+    from ark.core.diffusion_real import make_ksampler
+    return make_ksampler(
         seed=int(node.params.get("seed", 42)),
         steps=int(node.params.get("steps", 20)),
         cfg=float(node.params.get("cfg", 7.0)),
         sampler=node.params.get("sampler", "euler"),
         scheduler=node.params.get("scheduler", "normal"),
         denoise=float(node.params.get("denoise", 1.0)),
+        real_backend=bool(node.params.get("real_backend", False)),
     ), (4, -1, -1)
 
 
 def h_vae_decode(node, in_shapes):
-    return VAEDecodeStub(), (3, -1, -1)
+    from ark.core.diffusion_real import make_vae_decode
+    return make_vae_decode(bool(node.params.get("real_backend", False))), (3, -1, -1)
 
 
 def h_vae_encode(node, in_shapes):
-    return VAEEncodeStub(), (4, -1, -1)
+    from ark.core.diffusion_real import make_vae_encode
+    return make_vae_encode(bool(node.params.get("real_backend", False))), (4, -1, -1)
 
 
 def h_load_image(node, in_shapes):
