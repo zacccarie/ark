@@ -688,6 +688,9 @@ class MainWindow(QMainWindow):
                         if hasattr(mod, "last_path") and mod.last_path:
                             self.terminal.append_log(
                                 f"[output] {title} → {mod.last_path}")
+                        if hasattr(mod, "last_audio_path") and mod.last_audio_path:
+                            self.terminal.append_log(
+                                f"[audio] {title} ready: {mod.last_audio_path}")
                 except Exception as e:
                     self.terminal.append_log(f"[compile] Forward warning : {e}")
             # Iterate nodes : set OK pour ceux qui sont dans modules_dict

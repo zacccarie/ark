@@ -216,9 +216,9 @@ class InspectorPanel(QWidget):
         v.addWidget(self._audio_host)
         self._audio_host.hide()
 
-        # QMediaPlayer instance lazy
-        self._media_player = None
-        self._audio_output = None
+        # Audio playback (subprocess afplay/aplay/powershell)
+        self._audio_proc = None
+        self._poll_timer = None
         self._is_playing = False
 
         # Stored compiled modules_dict (set by MainWindow post-compile)
@@ -447,72 +447,84 @@ class InspectorPanel(QWidget):
             self._preview_label.hide()
 
     def _update_audio_player(self, node):
-        """Phase 56b : affiche play/pause/download si node a last_audio_path."""
-        if not self._modules_dict or node is None:
+        """Phase 56b : affiche play/pause/download si node a last_audio_path.
+
+        Sources path (priorité) :
+        1. modules_dict[node.id].last_audio_path (post-compile)
+        2. ~/.ark/audio_player/<node.id>.wav (cache disque)
+        """
+        if node is None:
             self._audio_host.hide()
             return
-        mod = self._modules_dict.get(node.id)
-        path = getattr(mod, "last_audio_path", None) if mod else None
-        if not path or path.startswith("err:") or not Path(path).exists():
+        # Only show for audio_player node type
+        if not hasattr(node, "spec") or node.spec.name != "audio_player":
+            self._audio_host.hide()
+            return
+        path = None
+        mod = self._modules_dict.get(node.id) if self._modules_dict else None
+        if mod is not None:
+            p = getattr(mod, "last_audio_path", None)
+            if p and not p.startswith("err:") and Path(p).exists():
+                path = p
+        if not path:
+            # Disk fallback : ~/.ark/audio_player/<node.id>.wav
+            disk = Path.home() / ".ark" / "audio_player" / f"{node.id}.wav"
+            if disk.exists():
+                path = str(disk)
+        if not path:
             self._audio_host.hide()
             self._stop_audio()
             return
         self._audio_path_label.setText(path)
         self._audio_host.show()
-        # Reset play state on new path
         self._stop_audio()
 
-    def _ensure_media_player(self):
-        if self._media_player is None:
-            try:
-                from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-                self._media_player = QMediaPlayer(self)
-                self._audio_output = QAudioOutput(self)
-                self._media_player.setAudioOutput(self._audio_output)
-                self._audio_output.setVolume(0.7)
-                # Reset btn when finished
-                self._media_player.playbackStateChanged.connect(
-                    self._on_playback_state)
-            except Exception as e:
-                self._media_player = None
-        return self._media_player
-
-    def _on_playback_state(self, state):
-        try:
-            from PySide6.QtMultimedia import QMediaPlayer
-            if state == QMediaPlayer.PlaybackState.PlayingState:
-                self._audio_play_btn.setText("⏸  Pause")
-                self._is_playing = True
-            else:
-                self._audio_play_btn.setText("▶  Play")
-                self._is_playing = False
-        except Exception:
-            pass
-
     def _on_audio_play_toggle(self):
+        """Phase 56b : play/pause via subprocess (afplay macOS / aplay linux /
+        start windows). Plus fiable que QMediaPlayer."""
         path = self._audio_path_label.text()
         if not path or not Path(path).exists():
             return
-        mp = self._ensure_media_player()
-        if mp is None:
+        if self._is_playing:
+            self._stop_audio()
             return
         try:
-            from PySide6.QtCore import QUrl
-            if self._is_playing:
-                mp.pause()
-            else:
-                if mp.source().toString() != QUrl.fromLocalFile(path).toString():
-                    mp.setSource(QUrl.fromLocalFile(path))
-                mp.play()
-        except Exception:
-            pass
+            import subprocess, sys, platform
+            sysname = platform.system()
+            if sysname == "Darwin":
+                cmd = ["afplay", path]
+            elif sysname == "Linux":
+                cmd = ["aplay", "-q", path]
+            else:  # Windows
+                cmd = ["powershell", "-c",
+                          f"(New-Object Media.SoundPlayer '{path}').PlaySync();"]
+            self._audio_proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._is_playing = True
+            self._audio_play_btn.setText("⏸  Stop")
+            # Polling via QTimer pour reset bouton à fin lecture
+            from PySide6.QtCore import QTimer
+            self._poll_timer = QTimer(self)
+            self._poll_timer.timeout.connect(self._poll_audio_proc)
+            self._poll_timer.start(200)
+        except Exception as e:
+            self._audio_path_label.setText(f"play error: {e}")
+
+    def _poll_audio_proc(self):
+        proc = getattr(self, "_audio_proc", None)
+        if proc is None or proc.poll() is not None:
+            self._stop_audio()
+            if getattr(self, "_poll_timer", None) is not None:
+                self._poll_timer.stop()
 
     def _stop_audio(self):
-        if self._media_player is not None:
+        proc = getattr(self, "_audio_proc", None)
+        if proc is not None:
             try:
-                self._media_player.stop()
+                proc.terminate()
             except Exception:
                 pass
+            self._audio_proc = None
         self._audio_play_btn.setText("▶  Play")
         self._is_playing = False
 
