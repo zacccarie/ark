@@ -675,18 +675,27 @@ class GraphModel(nn.Module):
         return value
 
     def forward(self, x):
-        cache: dict = {self.input_id: x}
-        # Lance les autres source nodes (sans incoming) qui ne sont pas l'input_id
+        # Phase 48 fix : si input_id a un module multi-output (loader/empty_latent/etc),
+        # exécute-le au lieu de le préempter avec dummy x.
+        if self.input_id in self.modules_dict:
+            input_mod = self.modules_dict[self.input_id]
+            try:
+                cache: dict = {self.input_id: input_mod()}
+            except TypeError:
+                cache = {self.input_id: input_mod(None)}
+        else:
+            cache = {self.input_id: x}
+
+        # Lance les autres source nodes
         for nid in self.source_node_ids:
             if nid in cache:
                 continue
-            mod = self.modules_dict[nid] if nid in self.modules_dict else None
-            if mod is None:
+            if nid not in self.modules_dict:
                 continue
+            mod = self.modules_dict[nid]
             try:
-                cache[nid] = mod()  # source : pas d'argument
+                cache[nid] = mod()
             except TypeError:
-                # Fallback : module attend un x (legacy)
                 cache[nid] = mod(None)
 
         for node in self.ordered_nodes:
