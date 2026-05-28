@@ -594,6 +594,18 @@ def _register_arch_viz():
 _register_arch_viz()
 
 
+# Dynamoscope bridge (Phase 37)
+def _register_dynamoscope():
+    try:
+        from ark.core.dynamoscope_bridge import register_dynamoscope_handlers
+        register_dynamoscope_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] dynamoscope handlers failed: {e}", file=sys.stderr)
+
+_register_dynamoscope()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

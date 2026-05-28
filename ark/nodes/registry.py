@@ -560,6 +560,14 @@ def default_registry() -> NodeRegistry:
         import sys
         print(f"[ARK] arch_viz specs failed: {e}", file=sys.stderr)
 
+    # Dynamoscope bridge (Phase 37)
+    try:
+        from ark.core.dynamoscope_bridge import register_dynamoscope_specs
+        register_dynamoscope_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] dynamoscope specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups
