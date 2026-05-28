@@ -296,46 +296,16 @@ def build_qss() -> str:
         padding: {T.S_3 - 1}px {T.S_4 - 1}px;
     }}
 
-    /* QSpinBox arrows agrandies + visibles */
-    QSpinBox, QDoubleSpinBox {{
-        padding-right: 28px;
-    }}
-    QSpinBox::up-button, QDoubleSpinBox::up-button {{
-        subcontrol-origin: border;
-        subcontrol-position: top right;
-        width: 22px;
-        height: 18px;
-        border-left: 1px solid {T.BORDER_DEFAULT};
-        border-bottom: 1px solid {T.BORDER_DEFAULT};
-        border-top-right-radius: {T.R_MEDIUM}px;
-        background: {T.BG_PANEL_RAISED};
-    }}
+    /* QSpinBox arrows — Phase 54c simplifié pour éviter crash polish Qt */
+    QSpinBox::up-button, QDoubleSpinBox::up-button,
     QSpinBox::down-button, QDoubleSpinBox::down-button {{
-        subcontrol-origin: border;
-        subcontrol-position: bottom right;
-        width: 22px;
-        height: 18px;
-        border-left: 1px solid {T.BORDER_DEFAULT};
-        border-bottom-right-radius: {T.R_MEDIUM}px;
+        width: 18px;
         background: {T.BG_PANEL_RAISED};
+        border: none;
     }}
     QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
     QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
         background: {T.PRIMARY_DIM};
-    }}
-    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-        image: none;
-        width: 10px; height: 10px;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-bottom: 6px solid {T.FG_SECONDARY};
-    }}
-    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-        image: none;
-        width: 10px; height: 10px;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid {T.FG_SECONDARY};
     }}
 
     QComboBox {{
