@@ -819,6 +819,13 @@ def compile_scene(scene, num_classes: int | None = None,
         "diffusion_model_loader", "empty_latent_image", "load_image",
         "webcam", "microphone", "constant", "hf_model_loader",
         "hf_tokenizer",
+        # Phase 45+54 : data sources
+        "torchvision_dataset", "imagenet_local", "coco_detection",
+        "audio_dataset", "video_dataset", "word2vec_embeddings",
+        "hf_dataset", "synthetic_dataset",
+        "load_image_file", "load_video", "load_sound", "multi_image_loader",
+        "load_csv", "load_json",
+        "tiny_llm_corpus", "tiny_llm_generate",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES
