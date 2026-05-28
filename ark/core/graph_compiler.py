@@ -546,6 +546,18 @@ def _register_glossary_handlers():
 _register_glossary_handlers()
 
 
+# Media loaders (Phase 32) — image/video/sound/multi-image
+def _register_media_loaders():
+    try:
+        from ark.core.media_loaders import register_media_loader_handlers
+        register_media_loader_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] media loaders handlers failed: {e}", file=sys.stderr)
+
+_register_media_loaders()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

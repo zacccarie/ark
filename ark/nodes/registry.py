@@ -17,11 +17,12 @@ from typing import Any
 @dataclass
 class ParamSpec:
     name: str
-    kind: str  # 'int' | 'float' | 'str' | 'bool' | 'choice' | 'multiline'
+    kind: str  # 'int' | 'float' | 'str' | 'bool' | 'choice' | 'multiline' | 'filepath' | 'dirpath'
     default: Any = None
-    options: list = field(default_factory=list)
+    options: list = field(default_factory=list)  # pour 'choice' OU pour 'filepath' = liste de filtres Qt
     min: float | None = None
     max: float | None = None
+    file_filter: str = ""  # ex. "Images (*.png *.jpg);;All (*)"
 
 
 @dataclass
@@ -394,10 +395,11 @@ def default_registry() -> NodeRegistry:
         name="load_image", title="Load Image",
         category="Diffusion",
         outputs=[SocketSpec("image", "image"), SocketSpec("mask", "image")],
-        params=[ParamSpec("path", "str", "input.png")],
+        params=[ParamSpec("path", "filepath", "input.png",
+                              file_filter="Images (*.png *.jpg *.jpeg *.webp);;All (*)")],
         has_thumbnail=True,
         description="Charge image depuis disque. Mask optionnel pour inpainting.",
-        param_help={"path": "Chemin absolu ou relatif vers le fichier image."},
+        param_help={"path": "Fichier image. Cliquer … pour parcourir."},
     ))
     r.register(NodeSpec(
         name="save_image", title="Save Image",
@@ -525,6 +527,14 @@ def default_registry() -> NodeRegistry:
     except Exception as e:
         import sys
         print(f"[ARK] auto_register specs failed: {e}", file=sys.stderr)
+
+    # Media loaders (Phase 32) — image/video/sound/multi-image
+    try:
+        from ark.core.media_loaders import register_media_loader_specs
+        register_media_loader_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] media loaders specs failed: {e}", file=sys.stderr)
 
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:

@@ -1,9 +1,11 @@
 """Inspector — propriétés du node sélectionné (params éditables)."""
 from __future__ import annotations
+from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QFormLayout, QVBoxLayout, QLabel, QLineEdit, QSpinBox,
-    QDoubleSpinBox, QComboBox, QCheckBox, QPlainTextEdit, QFrame,
+    QWidget, QFormLayout, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox,
+    QDoubleSpinBox, QComboBox, QCheckBox, QPlainTextEdit, QFrame, QPushButton,
+    QFileDialog,
 )
 
 from ark.ui import design_tokens as T
@@ -292,6 +294,39 @@ class InspectorPanel(QWidget):
             w.setFixedHeight(120)
             w.textChanged.connect(lambda n=p.name, ww=w: node.set_param(n, ww.toPlainText()))
             return w
+        if p.kind in ("filepath", "dirpath"):
+            # Widget composite : QLineEdit + bouton "..." → QFileDialog
+            container = QWidget()
+            h = QHBoxLayout(container)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(T.S_1)
+            le = QLineEdit(container)
+            le.setText(str(value) if value is not None else "")
+            le.setPlaceholderText("Chemin fichier..." if p.kind == "filepath"
+                                       else "Chemin dossier...")
+            le.textChanged.connect(lambda v, n=p.name: node.set_param(n, v))
+            btn = QPushButton("…", container)
+            btn.setFixedWidth(28)
+            btn.setStyleSheet(f"background-color: {T.ACCENT}; color: white; "
+                                  "font-weight: 700;")
+            is_dir = p.kind == "dirpath"
+            file_filter = getattr(p, "file_filter", "") or "All files (*)"
+
+            def _pick(_=None, le_=le, n=p.name, dir_mode=is_dir, flt=file_filter):
+                cur = le_.text() or str(Path.home())
+                if dir_mode:
+                    chosen = QFileDialog.getExistingDirectory(
+                        self, "Choisir dossier", cur)
+                else:
+                    chosen, _filter = QFileDialog.getOpenFileName(
+                        self, "Choisir fichier", cur, flt)
+                if chosen:
+                    le_.setText(chosen)
+                    node.set_param(n, chosen)
+            btn.clicked.connect(_pick)
+            h.addWidget(le, 1)
+            h.addWidget(btn)
+            return container
         # default : str
         w = QLineEdit()
         w.setText(str(value))
