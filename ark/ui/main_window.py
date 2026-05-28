@@ -121,6 +121,11 @@ class MainWindow(QMainWindow):
         a_auto.triggered.connect(self._on_auto_layout)
         view_menu.addAction(a_auto)
         view_menu.addSeparator()
+        a_arch_diag = QAction("Schématiser architecture (HTML)", self)
+        a_arch_diag.setShortcut(QKeySequence("Ctrl+Shift+D"))
+        a_arch_diag.triggered.connect(self._on_show_arch_diagram)
+        view_menu.addAction(a_arch_diag)
+        view_menu.addSeparator()
         view_menu.addAction("Layout : Workspace", lambda: self._apply_preset("workspace"))
         view_menu.addAction("Layout : Compact", lambda: self._apply_preset("compact"))
         view_menu.addAction("Layout : Code-first", lambda: self._apply_preset("code"))
@@ -522,6 +527,21 @@ class MainWindow(QMainWindow):
                 f"({n} groupes chargés)", 4000)
         except Exception as e:
             self.statusBar().showMessage(f"Erreur save group : {e}", 5000)
+
+    def _on_show_arch_diagram(self):
+        """Phase 35 — génère HTML organigramme de la scene + ouvre browser."""
+        from ark.core.arch_viz_nodes import ArchDiagram
+        from pathlib import Path
+        out_path = Path.home() / ".ark" / "arch_diagrams" / "current.html"
+        arch = ArchDiagram(
+            output_path=str(out_path),
+            title=f"ARK · Architecture ({len(list(self.scene.nodes()))} nodes)",
+            auto_open=True,
+        )
+        arch.set_scene(self.scene)
+        arch.forward()
+        self.statusBar().showMessage(
+            f"Architecture exportée → {out_path}", 4000)
 
     def _on_reload_user_groups(self):
         """Recharge ~/.ark/groups/ sans redémarrer."""

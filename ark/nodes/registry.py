@@ -552,6 +552,14 @@ def default_registry() -> NodeRegistry:
         import sys
         print(f"[ARK] bertviz specs failed: {e}", file=sys.stderr)
 
+    # Architecture viz + NN schematic (Phase 35)
+    try:
+        from ark.core.arch_viz_nodes import register_arch_viz_specs
+        register_arch_viz_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] arch_viz specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

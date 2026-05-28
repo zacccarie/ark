@@ -582,6 +582,18 @@ def _register_bertviz():
 _register_bertviz()
 
 
+# Architecture viz (Phase 35)
+def _register_arch_viz():
+    try:
+        from ark.core.arch_viz_nodes import register_arch_viz_handlers
+        register_arch_viz_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] arch_viz handlers failed: {e}", file=sys.stderr)
+
+_register_arch_viz()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
