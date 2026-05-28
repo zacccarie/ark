@@ -11,10 +11,10 @@ import uuid
 
 
 class NodeItem(QGraphicsItem):
-    DEFAULT_WIDTH = 200
-    HEADER_H = 24
-    ROW_H = 18
-    PARAM_H = 16
+    DEFAULT_WIDTH = 220
+    HEADER_H = 32
+    ROW_H = 22
+    PARAM_H = 18
     SOCKET_MARGIN = 14
     PADDING_BOTTOM = 8
     HANDLE_SIZE = 8
@@ -93,7 +93,7 @@ class NodeItem(QGraphicsItem):
     def paint(self, painter, option, widget=None):
         rect = QRectF(0, 0, self.width, self.height)
         path = QPainterPath()
-        path.addRoundedRect(rect, T.R_SMALL, T.R_SMALL)
+        path.addRoundedRect(rect, T.R_MEDIUM, T.R_MEDIUM)
 
         # Body
         painter.setBrush(QBrush(QColor(T.BG_PANEL_RAISED)))
@@ -104,15 +104,20 @@ class NodeItem(QGraphicsItem):
         painter.setPen(pen)
         painter.drawPath(path)
 
-        # Header band
+        # Header band — Phase 41 plus haut + radius medium
         header_rect = QRectF(0, 0, self.width, self.HEADER_H)
         header_path = QPainterPath()
-        header_path.addRoundedRect(header_rect, T.R_SMALL, T.R_SMALL)
+        header_path.addRoundedRect(header_rect, T.R_MEDIUM, T.R_MEDIUM)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(T.BG_OVERLAY)))
+        painter.setBrush(QBrush(QColor(T.BG_PANEL_RAISED)))
         painter.drawPath(header_path)
         # Cut rounded bottom
-        painter.fillRect(QRectF(0, self.HEADER_H - 4, self.width, 4), QColor(T.BG_OVERLAY))
+        painter.fillRect(QRectF(0, self.HEADER_H - 4, self.width, 4),
+                          QColor(T.BG_PANEL_RAISED))
+        # Subtle accent bar at top
+        if self.isSelected() or self.status == "ok":
+            painter.fillRect(QRectF(0, 0, self.width, 2),
+                              QColor(T.PRIMARY))
 
         # Title
         title_pen = QPen(QColor(T.FG_PRIMARY if not self.bypass else T.FG_DISABLED))
