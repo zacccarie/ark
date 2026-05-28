@@ -447,11 +447,12 @@ class InspectorPanel(QWidget):
             self._preview_label.hide()
 
     def _update_audio_player(self, node):
-        """Phase 56b : affiche play/pause/download si node a last_audio_path.
+        """Phase 56b/c : ALWAYS show widget for audio_player node type.
 
         Sources path (priorité) :
         1. modules_dict[node.id].last_audio_path (post-compile)
         2. ~/.ark/audio_player/<node.id>.wav (cache disque)
+        3. ANY recent file in ~/.ark/audio_player/ (fallback démo)
         """
         if node is None:
             self._audio_host.hide()
@@ -467,16 +468,28 @@ class InspectorPanel(QWidget):
             if p and not p.startswith("err:") and Path(p).exists():
                 path = p
         if not path:
-            # Disk fallback : ~/.ark/audio_player/<node.id>.wav
             disk = Path.home() / ".ark" / "audio_player" / f"{node.id}.wav"
             if disk.exists():
                 path = str(disk)
         if not path:
-            self._audio_host.hide()
-            self._stop_audio()
-            return
-        self._audio_path_label.setText(path)
+            # Last fallback : show any recent .wav in cache dir
+            cache_dir = Path.home() / ".ark" / "audio_player"
+            if cache_dir.exists():
+                wavs = sorted(cache_dir.glob("*.wav"),
+                                  key=lambda p: p.stat().st_mtime, reverse=True)
+                if wavs:
+                    path = str(wavs[0])
+        # ALWAYS show widget (even if no path → buttons disabled)
         self._audio_host.show()
+        if path:
+            self._audio_path_label.setText(path)
+            self._audio_play_btn.setEnabled(True)
+            self._audio_dl_btn.setEnabled(True)
+        else:
+            self._audio_path_label.setText(
+                "No audio yet — click Compile to generate")
+            self._audio_play_btn.setEnabled(False)
+            self._audio_dl_btn.setEnabled(False)
         self._stop_audio()
 
     def _on_audio_play_toggle(self):
