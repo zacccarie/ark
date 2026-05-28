@@ -982,18 +982,28 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _load_template(self, name: str):
+        import traceback
+        from pathlib import Path
         payload = get_template(name)
         if payload is None:
             QMessageBox.warning(self, "Template", f"Template '{name}' introuvable")
             return
-        # Phase 12 : ouvre dans un NOUVEAU tab (préserve projets existants)
         try:
             label = next((lbl for n, lbl in TEMPLATES_LIST if n == name), name)
             self.tabs.new_project(label, payload=payload)
             self.statusBar().showMessage(f"Template chargé : {name}", 3000)
             self.terminal.append_log(f"[template] {name} → nouvel onglet")
         except Exception as e:
-            QMessageBox.critical(self, "Erreur template", str(e))
+            # Phase 50c : dump full trace dans ~/.ark/crash.log + statusbar
+            crash_log = Path.home() / ".ark" / "crash.log"
+            crash_log.parent.mkdir(parents=True, exist_ok=True)
+            with crash_log.open("a") as f:
+                f.write(f"=== _load_template '{name}' ===\n")
+                traceback.print_exc(file=f)
+                f.write("\n")
+            QMessageBox.critical(
+                self, "Erreur template",
+                f"{e}\n\nTrace écrite dans ~/.ark/crash.log")
 
     def _on_export_python(self):
         if not self.scene.nodes():
