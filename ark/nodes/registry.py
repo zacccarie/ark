@@ -589,6 +589,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] benchmark specs failed: {e}", file=sys.stderr)
 
+    # Datasets (Phase 45)
+    try:
+        from ark.core.dataset_nodes import register_dataset_specs
+        register_dataset_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] dataset specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

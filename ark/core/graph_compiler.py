@@ -618,6 +618,18 @@ def _register_benchmark():
 _register_benchmark()
 
 
+# Dataset nodes (Phase 45)
+def _register_datasets():
+    try:
+        from ark.core.dataset_nodes import register_dataset_handlers
+        register_dataset_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] dataset handlers failed: {e}", file=sys.stderr)
+
+_register_datasets()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
