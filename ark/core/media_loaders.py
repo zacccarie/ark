@@ -325,11 +325,158 @@ def h_multi_image_loader(node, in_shapes):
     return m, (3, S, S)
 
 
+class LoadCSV(nn.Module):
+    """Charge CSV → tenseur (B, F) ou (B, F, T) si time-series.
+
+    Préfère pandas, fallback csv stdlib.
+    """
+
+    def __init__(self, path: str = "", has_header: bool = True,
+                 separator: str = ",", max_rows: int = 0,
+                 numeric_only: bool = True):
+        super().__init__()
+        self.path = path
+        self.has_header = has_header
+        self.separator = separator
+        self.max_rows = max_rows
+        self.numeric_only = numeric_only
+
+    def _load_pandas(self):
+        try:
+            import pandas as pd
+            df = pd.read_csv(self.path, sep=self.separator,
+                                header=0 if self.has_header else None)
+            if self.numeric_only:
+                df = df.select_dtypes(include="number")
+            if self.max_rows > 0:
+                df = df.head(self.max_rows)
+            return torch.from_numpy(df.values.astype("float32"))
+        except Exception:
+            return None
+
+    def _load_stdlib(self):
+        try:
+            import csv
+            rows = []
+            with open(self.path, newline="", encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter=self.separator)
+                if self.has_header:
+                    next(reader, None)
+                for r in reader:
+                    nums = []
+                    for v in r:
+                        try:
+                            nums.append(float(v))
+                        except ValueError:
+                            if self.numeric_only:
+                                continue
+                            nums.append(0.0)
+                    if nums:
+                        rows.append(nums)
+                    if self.max_rows > 0 and len(rows) >= self.max_rows:
+                        break
+            if not rows:
+                return None
+            n_cols = max(len(r) for r in rows)
+            rows = [r + [0.0] * (n_cols - len(r)) for r in rows]
+            return torch.tensor(rows, dtype=torch.float32)
+        except Exception:
+            return None
+
+    def forward(self, x=None):
+        p = Path(self.path).expanduser()
+        if p.exists() and self.path:
+            t = self._load_pandas()
+            if t is None:
+                t = self._load_stdlib()
+            if t is not None:
+                return t  # (B, F)
+        # Fallback : random (32, 10)
+        seed = int(hashlib.sha1((self.path or "csv").encode()).hexdigest()[:8], 16)
+        g = torch.Generator().manual_seed(seed)
+        return torch.randn(32, 10, generator=g)
+
+
+class LoadJSON(nn.Module):
+    """Charge JSON → tenseur si convertible, sinon dict brut accessible via .data.
+
+    Cas supportés :
+    - List[List[float]] / List[float] → torch.tensor
+    - Dict avec "data" : list[float] → tensor
+    - Sinon → fallback (1,) avec hash + .data conservé
+    """
+
+    def __init__(self, path: str = "", path_in_json: str = ""):
+        super().__init__()
+        self.path = path
+        self.path_in_json = path_in_json  # ex. "samples.data"
+        self.data = None  # raw dict/list
+
+    def _extract_data(self, d):
+        if not self.path_in_json:
+            return d
+        cur = d
+        for key in self.path_in_json.split("."):
+            if isinstance(cur, dict) and key in cur:
+                cur = cur[key]
+            else:
+                return None
+        return cur
+
+    def forward(self, x=None):
+        import json as _json
+        try:
+            p = Path(self.path).expanduser()
+            if p.exists() and self.path:
+                with p.open("r", encoding="utf-8") as f:
+                    raw = _json.load(f)
+                self.data = raw
+                sub = self._extract_data(raw)
+                if isinstance(sub, list):
+                    try:
+                        return torch.tensor(sub, dtype=torch.float32)
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+        # Fallback (1,) noise déterministe
+        seed = int(hashlib.sha1((self.path or "json").encode()).hexdigest()[:8], 16)
+        g = torch.Generator().manual_seed(seed)
+        return torch.randn(1, generator=g)
+
+
+# ============================================================
+# Handlers CSV / JSON
+# ============================================================
+
+def h_load_csv(node, in_shapes):
+    m = LoadCSV(
+        path=node.params.get("path", ""),
+        has_header=bool(node.params.get("has_header", True)),
+        separator=node.params.get("separator", ","),
+        max_rows=int(node.params.get("max_rows", 0)),
+        numeric_only=bool(node.params.get("numeric_only", True)),
+    )
+    m._ark_node_id = getattr(node, "id", "csv")
+    return m, (10,)  # shape inconnue avant load
+
+
+def h_load_json(node, in_shapes):
+    m = LoadJSON(
+        path=node.params.get("path", ""),
+        path_in_json=node.params.get("path_in_json", ""),
+    )
+    m._ark_node_id = getattr(node, "id", "json")
+    return m, (1,)
+
+
 def register_media_loader_handlers(handlers_dict: dict) -> bool:
     handlers_dict["load_image_file"] = h_load_image_file
     handlers_dict["load_video"] = h_load_video
     handlers_dict["load_sound"] = h_load_sound
     handlers_dict["multi_image_loader"] = h_multi_image_loader
+    handlers_dict["load_csv"] = h_load_csv
+    handlers_dict["load_json"] = h_load_json
     return True
 
 
@@ -433,6 +580,55 @@ def register_media_loader_specs(registry) -> bool:
             "size": "Resize carré uniforme.",
             "max_n": "Limite N images (0 = toutes).",
             "sort": "Trier alphabétique avant chargement.",
+        },
+        has_thumbnail=True,
+    ))
+
+    CSV_FILTER = "CSV (*.csv *.tsv *.txt);;All (*)"
+    JSON_FILTER = "JSON (*.json *.jsonl);;All (*)"
+
+    registry.register(NodeSpec(
+        name="load_csv", title="Load CSV",
+        category="Input",
+        outputs=[SocketSpec("table", "tensor")],
+        params=[
+            ParamSpec("path", "filepath", "", file_filter=CSV_FILTER),
+            ParamSpec("has_header", "bool", True),
+            ParamSpec("separator", "choice", ",",
+                        options=[",", ";", "\\t", "|", " "]),
+            ParamSpec("max_rows", "int", 0, min=0, max=10**7),
+            ParamSpec("numeric_only", "bool", True),
+        ],
+        description="Charge CSV → tenseur (B, F). Pandas préféré, fallback csv stdlib.",
+        role="Tabular file → torch.Tensor (rows × cols).",
+        function="pandas.read_csv → numeric columns → float32 tensor. "
+                    "Sans pandas : csv.reader stdlib + parse_float manuel.",
+        param_help={
+            "path": "Fichier .csv/.tsv. … pour parcourir.",
+            "has_header": "Première ligne = noms colonnes.",
+            "separator": "Séparateur cellules. \\t = tab.",
+            "max_rows": "Limite N rows (0 = tout).",
+            "numeric_only": "Ignore colonnes non-numériques.",
+        },
+        has_thumbnail=True,
+    ))
+
+    registry.register(NodeSpec(
+        name="load_json", title="Load JSON",
+        category="Input",
+        outputs=[SocketSpec("data", "tensor")],
+        params=[
+            ParamSpec("path", "filepath", "", file_filter=JSON_FILTER),
+            ParamSpec("path_in_json", "str", ""),
+        ],
+        description="Charge JSON → tenseur si convertible (List[float] ou List[List]). "
+                       "Sinon dict brut accessible via module.data.",
+        role="JSON file → tensor + raw data.",
+        function="json.load + path_in_json drilling (ex. 'samples.values'). "
+                    "Si list de nombres → torch.tensor(float32).",
+        param_help={
+            "path": "Fichier .json/.jsonl. … pour parcourir.",
+            "path_in_json": "Chemin clés à drill (ex. 'data.values'). Vide = root.",
         },
         has_thumbnail=True,
     ))

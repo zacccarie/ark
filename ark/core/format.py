@@ -21,6 +21,7 @@ def scene_to_payload(scene, name: str = "ark_graph",
             "params": dict(n.params),
             "bypass": bool(n.bypass),
             "width": int(n.width),
+            "height_extra": int(getattr(n, "user_height_extra", 0)),
             "pos": [float(pos.x()), float(pos.y())],
         })
     connections = []
@@ -70,6 +71,12 @@ def payload_to_scene(scene, payload: dict) -> None:
             try:
                 node.width = int(nd["width"])
                 node._layout_sockets()
+            except Exception:
+                pass
+        if "height_extra" in nd:
+            try:
+                node.user_height_extra = int(nd["height_extra"])
+                node.prepareGeometryChange()
             except Exception:
                 pass
         id_map[nd["id"]] = node.id

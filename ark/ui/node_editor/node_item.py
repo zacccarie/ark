@@ -27,6 +27,7 @@ class NodeItem(QGraphicsItem):
         self.bypass = False
         self.error: str | None = None
         self.width = self.DEFAULT_WIDTH
+        self.user_height_extra = 0  # Phase 33 : redim vertical user (px additionnels)
 
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -51,22 +52,28 @@ class NodeItem(QGraphicsItem):
             self.output_sockets.append(sock)
         self._layout_sockets()
 
-        # Resize state
+        # Resize state — Phase 33 : 2D (W + H)
         self._resizing = False
         self._resize_start_w = 0
+        self._resize_start_h_extra = 0
         self._resize_start_pos = QPointF()
 
     # ------------------------------------------------------------
     # Size / layout
     # ------------------------------------------------------------
     @property
-    def height(self) -> int:
+    def natural_height(self) -> int:
+        """Phase 33 : hauteur calculée depuis content (sans extra user)."""
         n_sockets = max(len(self.input_sockets), len(self.output_sockets))
         socket_h = max(n_sockets, 1) * self.ROW_H
         param_h = len(self.spec.params) * self.PARAM_H
         thumb_h = 58 if self.spec.has_thumbnail else 0
         err_h = 16 if self.error else 0
         return self.HEADER_H + socket_h + param_h + thumb_h + err_h + self.PADDING_BOTTOM
+
+    @property
+    def height(self) -> int:
+        return self.natural_height + int(self.user_height_extra)
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, self.width, self.height + self.HANDLE_SIZE)
@@ -387,6 +394,7 @@ class NodeItem(QGraphicsItem):
         if self._in_resize_handle(event.pos()):
             self._resizing = True
             self._resize_start_w = self.width
+            self._resize_start_h_extra = self.user_height_extra
             self._resize_start_pos = event.scenePos()
             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
             event.accept()
@@ -396,13 +404,18 @@ class NodeItem(QGraphicsItem):
     def mouseMoveEvent(self, event):
         if self._resizing:
             dx = event.scenePos().x() - self._resize_start_pos.x()
+            dy = event.scenePos().y() - self._resize_start_pos.y()
             new_w = max(140, int(self._resize_start_w + dx))
-            if new_w != self.width:
+            new_h_extra = max(0, int(self._resize_start_h_extra + dy))
+            changed = (new_w != self.width
+                          or new_h_extra != self.user_height_extra)
+            if changed:
                 self.prepareGeometryChange()
                 self.width = new_w
+                self.user_height_extra = new_h_extra
                 self._layout_sockets()
                 # Update connections liées (output socket position changes)
-                for sock in self.output_sockets:
+                for sock in self.output_sockets + self.input_sockets:
                     for conn in sock.connections:
                         conn.update_path()
                 self.update()
