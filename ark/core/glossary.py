@@ -9,10 +9,16 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class GlossaryEntry:
     term: str
-    category: str  # 'Architecture' | 'Training' | 'Observation' | 'Diffusion' | 'Workflow' | 'Math'
+    category: str  # 'Architecture' | 'Training' | 'Observation' | 'Diffusion' | 'Workflow' | 'Math' + glossary_data cats
     short: str  # 1-line summary
-    long: str  # paragraph
+    long: str  # paragraph détaillé
     related: tuple[str, ...] = ()
+    # Phase 38 : enrichissement didactique
+    intuition: str = ""  # analogie/explication vulgarisée
+    equation: str = ""   # formule math (LaTeX-friendly)
+    when_to_use: str = ""  # cas concret d'utilisation
+    example: str = ""    # exemple concret
+    pitfall: str = ""    # piège fréquent à éviter
 
 
 GLOSSARY: list[GlossaryEntry] = [
@@ -468,8 +474,13 @@ def _merge_glossary_data() -> None:
     """Importe les 400+ concepts de glossary_data dans GLOSSARY (idempotent)."""
     try:
         from ark.core.glossary_data import CONCEPTS
+        from ark.core.didactic_data import DIDACTIC_EXTRA
     except ImportError:
-        return
+        DIDACTIC_EXTRA = {}
+        try:
+            from ark.core.glossary_data import CONCEPTS
+        except ImportError:
+            return
     existing = {_norm_term(e.term) for e in GLOSSARY}
     seen_new: set[str] = set()
     for c in CONCEPTS:
@@ -479,12 +490,19 @@ def _merge_glossary_data() -> None:
         seen_new.add(norm)
         short = c.get("short", "") or c["title"]
         long_ = c.get("long", "") or short or c["title"]
+        # Recherche enrichissement didactique
+        extra = DIDACTIC_EXTRA.get(c["name"], {})
         GLOSSARY.append(GlossaryEntry(
             term=c["title"],
             category=c["category"],
             short=short,
             long=long_,
             related=tuple(c.get("related", ())),
+            intuition=extra.get("intuition", ""),
+            equation=c.get("equation", "") or extra.get("equation", ""),
+            when_to_use=extra.get("when_to_use", ""),
+            example=extra.get("example", ""),
+            pitfall=extra.get("pitfall", ""),
         ))
 
 

@@ -146,9 +146,14 @@ class MainWindow(QMainWindow):
         run_menu.addAction(a_train)
 
         help_menu = menubar.addMenu("Aide")
-        a_glossary = QAction("Glossaire…", self)
-        a_glossary.setShortcut(QKeySequence("F1"))
-        a_glossary.setToolTip("Définitions des concepts ARK (ML, architecture, observation, diffusion).")
+        a_help = QAction("Aide complète (glossaire + tutoriel)…", self)
+        a_help.setShortcut(QKeySequence("F1"))
+        a_help.setToolTip("475+ concepts didactiques + intuition + exemples + équations.")
+        a_help.triggered.connect(self._on_open_help_page)
+        help_menu.addAction(a_help)
+        a_glossary = QAction("Glossaire compact…", self)
+        a_glossary.setShortcut(QKeySequence("Shift+F1"))
+        a_glossary.setToolTip("Définitions courtes (ancien dialog).")
         a_glossary.triggered.connect(self._on_open_glossary)
         help_menu.addAction(a_glossary)
         help_menu.addSeparator()
@@ -646,6 +651,18 @@ class MainWindow(QMainWindow):
             return
         self._glossary_dlg = GlossaryDialog(self, initial_term=initial_term)
         self._glossary_dlg.show()
+
+    def _on_open_help_page(self, initial_term: str | None = None):
+        """Phase 38 : ouvre la page d'aide complète (non-modal)."""
+        from ark.ui.dialogs.help_page import HelpPage
+        if getattr(self, "_help_dlg", None) is not None and self._help_dlg.isVisible():
+            if initial_term:
+                self._help_dlg.select_term(initial_term)
+            self._help_dlg.raise_()
+            self._help_dlg.activateWindow()
+            return
+        self._help_dlg = HelpPage(self, initial_term=initial_term)
+        self._help_dlg.show()
 
     def _on_browse_templates(self):
         from ark.ui.dialogs.templates_browser import TemplatesBrowser

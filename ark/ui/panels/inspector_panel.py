@@ -68,6 +68,18 @@ class InspectorPanel(QWidget):
         )
         self._info_layout.addWidget(self.sockets_label)
 
+        # Phase 38 : intuition (vulgarisation, vert électrique)
+        self.intuition_label = QLabel("", self._info_host)
+        self.intuition_label.setWordWrap(True)
+        self.intuition_label.setStyleSheet(
+            f"font-size: {T.FS_LABEL}px; color: {T.SUCCESS}; "
+            f"font-style: italic; line-height: 1.5; "
+            f"padding: {T.S_2}px {T.S_3}px; "
+            f"background-color: {T.SUCCESS_DIM}; "
+            f"border-left: 2px solid {T.SUCCESS};"
+        )
+        self._info_layout.addWidget(self.intuition_label)
+
         self.equation_label = QLabel("", self._info_host)
         self.equation_label.setWordWrap(True)
         self.equation_label.setStyleSheet(
@@ -77,6 +89,40 @@ class InspectorPanel(QWidget):
             f"padding: {T.S_2}px {T.S_3}px; border-left: 2px solid {T.ACCENT};"
         )
         self._info_layout.addWidget(self.equation_label)
+
+        # Phase 38 : when_to_use (cyan)
+        self.when_label = QLabel("", self._info_host)
+        self.when_label.setWordWrap(True)
+        self.when_label.setStyleSheet(
+            f"font-size: {T.FS_LABEL}px; color: {T.INFO}; "
+            f"padding: {T.S_2}px {T.S_3}px; "
+            f"background-color: {T.INFO_DIM}; "
+            f"border-left: 2px solid {T.INFO}; line-height: 1.5;"
+        )
+        self._info_layout.addWidget(self.when_label)
+
+        # Phase 38 : example (mono, accent rouge)
+        self.example_label = QLabel("", self._info_host)
+        self.example_label.setWordWrap(True)
+        self.example_label.setStyleSheet(
+            f"font-family: 'Menlo','Courier New',monospace; "
+            f"font-size: {T.FS_LABEL}px; color: {T.FG_PRIMARY}; "
+            f"padding: {T.S_2}px {T.S_3}px; "
+            f"background-color: {T.BG_OVERLAY}; "
+            f"border-left: 2px solid {T.FG_SECONDARY};"
+        )
+        self._info_layout.addWidget(self.example_label)
+
+        # Phase 38 : pitfall (warn amber)
+        self.pitfall_label = QLabel("", self._info_host)
+        self.pitfall_label.setWordWrap(True)
+        self.pitfall_label.setStyleSheet(
+            f"font-size: {T.FS_LABEL}px; color: {T.WARN}; "
+            f"padding: {T.S_2}px {T.S_3}px; "
+            f"background-color: {T.WARN_DIM}; "
+            f"border-left: 2px solid {T.WARN}; line-height: 1.5;"
+        )
+        self._info_layout.addWidget(self.pitfall_label)
 
         self.related_label = QLabel("", self._info_host)
         self.related_label.setWordWrap(True)
@@ -153,20 +199,34 @@ class InspectorPanel(QWidget):
                 self._form.addRow(label, w)
 
     def _populate_info_block(self, spec):
-        """Phase 30 — remplit bloc explicatif depuis NodeSpec.
+        """Phase 30/38 — remplit bloc explicatif exhaustif depuis NodeSpec + glossaire.
 
-        Hiérarchie :
-        - role (bold) : short summary (1 phrase max)
-        - function (regular) : explication détaillée
+        Hiérarchie (Phase 38) :
+        - role (bold) : short summary
+        - function (regular) : comment ça marche
+        - intuition (italic vert) : analogie vulgarisée
         - sockets : inputs → outputs
-        - equation : formule si présente
-        - related : concepts liés si présents
+        - equation : formule
+        - when_to_use (cyan) : cas d'usage concret
+        - example (mono) : exemple chiffré
+        - pitfall (amber) : piège à éviter
+        - related : concepts liés
         """
         # Toujours clear les labels (fix persistance text Phase 30b)
         self.role_label.clear()
         self.function_label.clear()
         self.equation_label.clear()
         self.related_label.clear()
+        # Phase 38 : enrichissement depuis GLOSSARY + DIDACTIC_EXTRA
+        from ark.core.glossary import GLOSSARY
+        glossary_entry = next(
+            (g for g in GLOSSARY if g.term == spec.title), None)
+        # Fallback : lookup didactic par spec.name (snake_case)
+        try:
+            from ark.core.didactic_data import DIDACTIC_EXTRA
+            didactic = DIDACTIC_EXTRA.get(spec.name, {})
+        except ImportError:
+            didactic = {}
 
         role = (getattr(spec, "role", "") or getattr(spec, "short", "")).strip()
         function = (getattr(spec, "function", "") or "").strip()
@@ -190,6 +250,22 @@ class InspectorPanel(QWidget):
 
         equation = (getattr(spec, "equation", "") or "").strip()
         related = getattr(spec, "related", ()) or ()
+
+        # Phase 38 : enrichissement multi-source (GLOSSARY + DIDACTIC_EXTRA + spec)
+        intuition = didactic.get("intuition", "")
+        when_to_use = didactic.get("when_to_use", "")
+        example = didactic.get("example", "")
+        pitfall = didactic.get("pitfall", "")
+        # Fallback GlossaryEntry
+        if glossary_entry is not None:
+            intuition = intuition or glossary_entry.intuition
+            when_to_use = when_to_use or glossary_entry.when_to_use
+            example = example or glossary_entry.example
+            pitfall = pitfall or glossary_entry.pitfall
+            if not equation:
+                equation = glossary_entry.equation
+            if not related and glossary_entry.related:
+                related = glossary_entry.related
 
         # Sockets summary
         in_types = " · ".join(s.socket_type for s in spec.inputs) or "—"
@@ -226,6 +302,24 @@ class InspectorPanel(QWidget):
             any_shown = True
         else:
             self.equation_label.hide()
+
+        # Phase 38 : sections didactiques
+        for label_attr, content, prefix in [
+            ("intuition_label", intuition, "💡 "),
+            ("when_label", when_to_use, "🎯 "),
+            ("example_label", example, ""),
+            ("pitfall_label", pitfall, "⚠ "),
+        ]:
+            lbl = getattr(self, label_attr, None)
+            if lbl is None:
+                continue
+            lbl.clear()
+            if content:
+                lbl.setText(prefix + content)
+                lbl.show()
+                any_shown = True
+            else:
+                lbl.hide()
 
         if related:
             self.related_label.setText(
