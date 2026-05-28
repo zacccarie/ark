@@ -536,6 +536,22 @@ def default_registry() -> NodeRegistry:
         import sys
         print(f"[ARK] media loaders specs failed: {e}", file=sys.stderr)
 
+    # 3D plots Plotly (Phase 34)
+    try:
+        from ark.core.plot3d_nodes import register_plot3d_specs
+        register_plot3d_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] plot3d specs failed: {e}", file=sys.stderr)
+
+    # BertViz attention viz (Phase 34)
+    try:
+        from ark.core.bertviz_nodes import register_bertviz_specs
+        register_bertviz_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] bertviz specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

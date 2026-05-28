@@ -558,6 +558,30 @@ def _register_media_loaders():
 _register_media_loaders()
 
 
+# 3D Plots Plotly (Phase 34)
+def _register_plot3d():
+    try:
+        from ark.core.plot3d_nodes import register_plot3d_handlers
+        register_plot3d_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] plot3d handlers failed: {e}", file=sys.stderr)
+
+_register_plot3d()
+
+
+# BertViz (Phase 34)
+def _register_bertviz():
+    try:
+        from ark.core.bertviz_nodes import register_bertviz_handlers
+        register_bertviz_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] bertviz handlers failed: {e}", file=sys.stderr)
+
+_register_bertviz()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
