@@ -31,6 +31,8 @@ class NodeItem(QGraphicsItem):
         # Phase 36 : status sémantique
         self.status: str = "idle"  # idle | compiling | training | ok | error | warn
         self._hover_scale = 1.0  # animé subtilement sur hover
+        # Phase 49 : progress par node 0..1 (animé loading si > 0)
+        self.progress: float = 0.0
 
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -151,11 +153,27 @@ class NodeItem(QGraphicsItem):
         painter.drawEllipse(int(dot_x), dot_y, dot_size, dot_size)
         # Glow autour si state actif (non-idle)
         if self.status not in ("idle", ""):
-            from PySide6.QtGui import QRadialGradient
             painter.setBrush(QBrush(QColor(status_color)))
             painter.setOpacity(0.25)
             painter.drawEllipse(int(dot_x) - 2, dot_y - 2, dot_size + 4, dot_size + 4)
             painter.setOpacity(1.0)
+
+        # Phase 49 : progress arc top edge si node actif avec progression
+        if self.status in ("compiling", "training") and self.progress > 0:
+            # Barre horizontale top edge animée
+            bar_w = int(self.width * min(self.progress, 1.0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(T.STATE_TRAINING)))
+            painter.drawRect(QRectF(0, 0, bar_w, 3))
+        elif self.status == "ok":
+            # Border accent vert plus marqué (success visible)
+            painter.setPen(QPen(QColor(T.STATE_OK), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            from PySide6.QtGui import QPainterPath
+            ok_path = QPainterPath()
+            ok_path.addRoundedRect(QRectF(0, 0, self.width, self.height),
+                                         T.R_MEDIUM, T.R_MEDIUM)
+            painter.drawPath(ok_path)
 
         # Category microlabel
         font_micro = QFont("Arial", T.FS_MICRO)
@@ -380,6 +398,11 @@ class NodeItem(QGraphicsItem):
         if status != "error":
             # Clear error si on passe à autre chose
             pass
+        self.update()
+
+    def set_progress(self, value: float):
+        """Phase 49 : update progress 0..1 (visible si status compiling/training)."""
+        self.progress = max(0.0, min(1.0, float(value)))
         self.update()
 
     def _build_tooltip(self) -> str:

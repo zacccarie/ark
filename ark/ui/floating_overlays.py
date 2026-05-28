@@ -323,6 +323,104 @@ class StatsOverlay(QWidget):
 # Bottom-right view controls (zoom + tool + minimap)
 # ============================================================
 
+class GlobalProgress(QWidget):
+    """Phase 49 : barre progression globale top canvas. Cachée si idle."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedHeight(36)
+        self._progress = 0.0
+        self._label_text = "READY"
+        self._state = "idle"  # idle | compiling | training | ok | error
+        self.setStyleSheet(
+            f"GlobalProgress {{ "
+            f"  background-color: {T.BG_PANEL}; "
+            f"  border: 1px solid {T.BORDER_DEFAULT}; "
+            f"  border-radius: {T.R_LARGE}px; "
+            f"}}"
+        )
+
+        sh = QGraphicsDropShadowEffect(self)
+        sh.setBlurRadius(20)
+        sh.setColor(QColor(0, 0, 0, 140))
+        sh.setOffset(0, 4)
+        self.setGraphicsEffect(sh)
+
+        h = QHBoxLayout(self)
+        h.setContentsMargins(14, 6, 14, 6)
+        h.setSpacing(10)
+
+        self.dot = QLabel("●", self)
+        self.dot.setStyleSheet(
+            f"color: {T.FG_TERTIARY}; font-size: 14px; background: transparent;")
+        h.addWidget(self.dot)
+
+        self.label = QLabel("READY", self)
+        self.label.setStyleSheet(
+            f"color: {T.FG_PRIMARY}; "
+            f"font-family: {T.FONT_DISPLAY_FAMILY}; "
+            f"font-size: {T.FS_LABEL}px; "
+            f"font-weight: 700; "
+            f"text-transform: uppercase; "
+            f"letter-spacing: 1.5px; "
+            f"background: transparent;")
+        h.addWidget(self.label)
+
+        self.pct = QLabel("", self)
+        self.pct.setStyleSheet(
+            f"color: {T.FG_SECONDARY}; "
+            f"font-family: {T.FONT_MONO_FAMILY}; "
+            f"font-size: {T.FS_LABEL}px; "
+            f"font-weight: 600; "
+            f"background: transparent;")
+        h.addWidget(self.pct)
+
+        h.addStretch(1)
+
+    def set_progress(self, value: float, label: str = "", state: str = ""):
+        self._progress = max(0.0, min(1.0, float(value)))
+        if label:
+            self._label_text = label
+            self.label.setText(label.upper())
+        if state:
+            self._state = state
+        self.pct.setText(f"{int(self._progress * 100)}%")
+        colors = {
+            "idle": T.FG_TERTIARY,
+            "compiling": T.INFO,
+            "training": T.INFO,
+            "ok": T.STATE_OK,
+            "error": T.STATE_ERROR,
+        }
+        c = colors.get(self._state, T.FG_TERTIARY)
+        self.dot.setStyleSheet(
+            f"color: {c}; font-size: 14px; background: transparent;")
+        self.update()
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if self._state == "idle" or self._progress <= 0:
+            return
+        # Barre progression au bottom
+        from PySide6.QtGui import QPainter, QColor as _QC
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+        bar_h = 3
+        bar_y = rect.height() - bar_h - 2
+        bar_w = int((rect.width() - 24) * self._progress)
+        col_map = {
+            "compiling": T.INFO, "training": T.INFO,
+            "ok": T.STATE_OK, "error": T.STATE_ERROR,
+        }
+        col = _QC(col_map.get(self._state, T.PRIMARY))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(col)
+        p.drawRoundedRect(12, bar_y, bar_w, bar_h, 1.5, 1.5)
+        p.end()
+
+
 class ViewControls(QWidget):
     """Tool dropdown + zoom % + minimap toggle + snap toggle."""
 

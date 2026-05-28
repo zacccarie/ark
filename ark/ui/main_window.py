@@ -178,22 +178,28 @@ class MainWindow(QMainWindow):
         pass
 
     def _setup_floating_overlays(self):
-        """Phase 42 : 4 widgets overlay au-dessus du canvas central."""
+        """Phase 42 : 4 widgets overlay au-dessus du canvas central.
+        Phase 49 : ajout GlobalProgress."""
         from ark.ui.floating_overlays import (
-            LeftRail, ActionBar, StatsOverlay, ViewControls,
+            LeftRail, ActionBar, StatsOverlay, ViewControls, GlobalProgress,
         )
 
-        # Parent = tabs widget central (les overlays flottent au-dessus du QGraphicsView)
+        # Parent = tabs widget central
         host = self.tabs
         self._left_rail = LeftRail(host)
         self._action_bar = ActionBar(host)
         self._stats_overlay = StatsOverlay(host)
         self._view_controls = ViewControls(host)
+        self._global_progress = GlobalProgress(host)
+        self._global_progress.hide()  # Hidden idle
 
+        for w in (self._left_rail, self._action_bar,
+                    self._stats_overlay, self._view_controls,
+                    self._global_progress):
+            w.raise_()
         for w in (self._left_rail, self._action_bar,
                     self._stats_overlay, self._view_controls):
             w.show()
-            w.raise_()
 
         # Wire ActionBar signals
         self._action_bar.compile_clicked.connect(self._on_action_run)
@@ -292,6 +298,14 @@ class MainWindow(QMainWindow):
         ab_w = ab.sizeHint().width()
         ab_h = ab.sizeHint().height()
         ab.setGeometry(host_rect.width() - ab_w - margin, margin, ab_w, ab_h)
+
+        # GlobalProgress (Phase 49) : top-center sous ActionBar
+        if hasattr(self, "_global_progress"):
+            gp = self._global_progress
+            gp_w = 360
+            gp.setGeometry(rail_w + margin,
+                              margin,
+                              gp_w, 36)
 
         # StatsOverlay : bottom-left (above left rail bottom icons)
         so = self._stats_overlay
@@ -540,16 +554,61 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Layout chargé : {path}", 2000)
 
     def _on_compile(self):
+        """Phase 49 : statuts visuels par node + GlobalProgress animée."""
         from ark.core.graph_compiler import compile_scene, GraphCompileError
+        from PySide6.QtCore import QTimer
+
+        nodes = list(self.scene.nodes())
+        # Reset all to compiling
+        for n in nodes:
+            n.set_status("compiling")
+            n.set_progress(0.0)
+            n.set_error(None)
+        if hasattr(self, "_global_progress"):
+            self._global_progress.show()
+            self._global_progress.raise_()
+            self._global_progress.set_progress(0.0, "Compile", "compiling")
+
+        # Animate progress per node sequentially (instant compile but UI feedback)
         try:
             self._compiled = compile_scene(self.scene, num_classes=None)
+            # Iterate nodes : set OK pour ceux qui sont dans modules_dict
+            modules_dict = getattr(self._compiled.model, "modules_dict", {})
+            compiled_ids = set(modules_dict.keys()) if hasattr(modules_dict, "keys") else set()
+
+            def step(i):
+                if i >= len(nodes):
+                    if hasattr(self, "_global_progress"):
+                        self._global_progress.set_progress(1.0, "Compiled ✓", "ok")
+                        QTimer.singleShot(2500, self._global_progress.hide)
+                    return
+                node = nodes[i]
+                if node.id in compiled_ids or len(compiled_ids) == 0:
+                    node.set_status("ok")
+                else:
+                    node.set_status("warn")
+                node.set_progress(1.0)
+                pct = (i + 1) / max(len(nodes), 1)
+                if hasattr(self, "_global_progress"):
+                    self._global_progress.set_progress(
+                        pct, f"Compile {i+1}/{len(nodes)}", "compiling")
+                QTimer.singleShot(40, lambda j=i+1: step(j))
+
+            step(0)
             n_params = sum(p.numel() for p in self._compiled.model.parameters())
-            msg = (f"✓ compile · {len(self.scene.nodes())} nodes · "
+            msg = (f"✓ compile · {len(nodes)} nodes · "
                    f"{n_params:,} params · in={self._compiled.input_shape} → "
                    f"out={self._compiled.output_shape}")
             self.statusBar().showMessage(msg, 5000)
             self.terminal.append_log(msg)
         except GraphCompileError as e:
+            # Mark all not-yet-ok as error
+            for n in nodes:
+                if n.status != "ok":
+                    n.set_status("error")
+            if hasattr(self, "_global_progress"):
+                self._global_progress.set_progress(1.0, "Compile failed", "error")
+                QTimer.singleShot(3500, self._global_progress.hide)
             self.statusBar().showMessage(f"✗ compile error : {e}", 8000)
             self.terminal.append_log(f"[compile error] {e}")
 
@@ -561,6 +620,14 @@ class MainWindow(QMainWindow):
         except GraphCompileError as e:
             QMessageBox.critical(self, "Compile error", str(e))
             return
+        # Phase 49 : marque tous nodes training + show progress
+        for n in self.scene.nodes():
+            n.set_status("training")
+            n.set_progress(0.0)
+        if hasattr(self, "_global_progress"):
+            self._global_progress.show()
+            self._global_progress.raise_()
+            self._global_progress.set_progress(0.0, "Training", "training")
         self._thread = QThread(self)
         train_loader, val_loader = mnist_loaders(n_train=3000, n_val=1000, batch_size=128)
         # Détecte si auto_mutate doit être activé (présence de trigger_rule + vg_block)
@@ -626,6 +693,16 @@ class MainWindow(QMainWindow):
                 self.terminal.append_log(f"[mutate ep{epoch} fail] {a['error']}")
 
     def _on_batch(self, info: dict):
+        # Phase 49 : update global progress
+        if hasattr(self, "_global_progress"):
+            ep = info.get("epoch", 1)
+            ep_total = info.get("epochs", 1) or 1
+            batch = info.get("batch", 0)
+            total = info.get("total_batches", 1) or 1
+            local = batch / total
+            overall = ((ep - 1) + local) / ep_total
+            self._global_progress.set_progress(
+                overall, f"Train ep {ep}/{ep_total}", "training")
         self.statusBar().showMessage(
             f"epoch {info['epoch']} · batch {info['batch']}/{info['total_batches']} · "
             f"loss={info['loss']:.4f} · acc={info['acc']*100:.2f}%", 1500
@@ -639,11 +716,27 @@ class MainWindow(QMainWindow):
                f"({info['elapsed']:.1f}s)")
         self.terminal.append_log(msg)
         self.statusBar().showMessage(msg, 4000)
+        # Phase 49 : final epoch → set ok
+        if hasattr(self, "_global_progress") and info.get("epoch") == info.get("epochs"):
+            from PySide6.QtCore import QTimer
+            self._global_progress.set_progress(1.0, "Trained ✓", "ok")
+            QTimer.singleShot(3500, self._global_progress.hide)
+            # Mark all training nodes ok
+            for n in self.scene.nodes():
+                if n.status == "training":
+                    n.set_status("ok")
 
     def _on_stop(self):
         if hasattr(self, "_worker") and self._worker is not None:
             self._worker.stop()
             self.statusBar().showMessage("Stop demandé", 1500)
+        # Phase 49 : reset nodes idle + hide progress
+        for n in self.scene.nodes():
+            if n.status in ("compiling", "training"):
+                n.set_status("idle")
+                n.set_progress(0.0)
+        if hasattr(self, "_global_progress"):
+            self._global_progress.hide()
 
     def _on_search(self):
         self.view.open_search_overlay()
