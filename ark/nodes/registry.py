@@ -613,6 +613,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] output viewer specs failed: {e}", file=sys.stderr)
 
+    # Multimodal (Phase 56)
+    try:
+        from ark.core.multimodal_nodes import register_multimodal_specs
+        register_multimodal_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] multimodal specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

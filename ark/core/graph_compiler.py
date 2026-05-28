@@ -654,6 +654,18 @@ def _register_output_viewers():
 _register_output_viewers()
 
 
+# Multimodal (Phase 56)
+def _register_multimodal():
+    try:
+        from ark.core.multimodal_nodes import register_multimodal_handlers
+        register_multimodal_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] multimodal handlers failed: {e}", file=sys.stderr)
+
+_register_multimodal()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
@@ -838,6 +850,8 @@ def compile_scene(scene, num_classes: int | None = None,
         "load_image_file", "load_video", "load_sound", "multi_image_loader",
         "load_csv", "load_json",
         "tiny_llm_corpus", "tiny_llm_generate",
+        # Phase 56 : multimodal sources
+        "text_to_frame_seq", "text_to_melody",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES

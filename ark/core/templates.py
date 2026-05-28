@@ -15,6 +15,11 @@ TEMPLATES_LIST = [
     ("tiny_llm_demo", "TinyLLM (corpus → train → generate, 100k params char-level)"),
     ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
     ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
+    # Phase 56 — multimodal
+    ("text2video_tiny", "Text2Video Tiny (prompt → procedural frames → .gif)"),
+    ("text2audio_tiny", "Text2Audio Tiny (prompt → melody → ADSR synth → .wav)"),
+    ("img2text_resnet", "Img2Text ResNet18 (image → top-K → caption)"),
+    ("img2img_style", "Img2Img Style (conv pipeline neuronal léger)"),
 ]
 
 
@@ -289,6 +294,104 @@ def template_metamorph_m5() -> dict:
                   num_classes=10, tags=["template", "metamorph", "m5", "mead-vygotsky"])
 
 
+def template_text2video_tiny() -> dict:
+    """Phase 56 : prompt → animated frame seq → .gif/.mp4."""
+    txt = _node("text_input", 0, 200,
+                  {"prompt": "ocean sunset waves crashing"})
+    tfs = _node("text_to_frame_seq", 280, 200,
+                  {"prompt": "ocean sunset waves crashing",
+                   "n_frames": 32, "height": 128, "width": 128})
+    vw = _node("video_writer", 580, 200,
+                 {"output_path": "./output/text2video.gif", "fps": 12})
+    iv = _node("image_viewer", 580, 360,
+                 {"title": "Last Frame"})
+    conns = [
+        _conn(txt, tfs),
+        _conn(tfs, vw),
+        _conn(tfs, iv),
+    ]
+    return _wrap("Text2Video Tiny",
+                  [txt, tfs, vw, iv], conns,
+                  tags=["template", "video", "multimodal", "text2video"])
+
+
+def template_text2audio_tiny() -> dict:
+    """Phase 56 : prompt → melody → synth → .wav."""
+    txt = _node("text_input", 0, 200, {"prompt": "hello world music"})
+    mel = _node("text_to_melody", 280, 200,
+                  {"prompt": "hello world music",
+                   "note_dur": 0.25, "base_octave": 4})
+    syn = _node("audio_synth", 580, 200,
+                  {"sample_rate": 22050, "envelope": "adsr", "wave": "sine"})
+    aw = _node("audio_writer", 880, 200,
+                 {"output_path": "./output/text2audio.wav",
+                  "sample_rate": 22050})
+    nd = _node("number_display", 880, 380,
+                 {"title": "Samples", "fmt": ".0f", "unit": "samples"})
+    conns = [
+        _conn(txt, mel),
+        _conn(mel, syn),
+        _conn(syn, aw),
+        _conn(syn, nd),
+    ]
+    return _wrap("Text2Audio Tiny",
+                  [txt, mel, syn, aw, nd], conns,
+                  tags=["template", "audio", "multimodal", "text2audio"])
+
+
+def template_img2text_resnet() -> dict:
+    """Phase 56 : image file → ResNet18 → top-K → caption."""
+    li = _node("load_image_file", 0, 200,
+                 {"file_path": "", "size": 224})
+    clf = _node("imagenet_classifier", 280, 200,
+                  {"backbone": "resnet18"})
+    cap = _node("caption_formatter", 580, 200,
+                  {"k": 3, "template": "default",
+                   "use_imagenet_labels": True})
+    tv = _node("text_viewer", 880, 200,
+                 {"title": "Caption", "max_chars": 1000})
+    tk = _node("top_k_predictions", 580, 380,
+                 {"title": "Top-5", "k": 5})
+    conns = [
+        _conn(li, clf),
+        _conn(clf, cap),
+        _conn(cap, tv),
+        _conn(clf, tk),
+    ]
+    return _wrap("Img2Text ResNet18",
+                  [li, clf, cap, tv, tk], conns,
+                  tags=["template", "vision", "multimodal", "img2text",
+                        "classification"])
+
+
+def template_img2img_style() -> dict:
+    """Phase 56 : load_image → conv2d transform pipeline → save_image.
+
+    Léger img2img neuronal (sans SD). Conv apprenable + activation +
+    pooling → upsample, preview.
+    """
+    li = _node("load_image_file", 0, 200,
+                 {"file_path": "", "size": 256})
+    c1 = _node("conv2d", 280, 200,
+                 {"channels": 32, "kernel": 3, "stride": 1,
+                  "padding": 1, "activation": "gelu"})
+    c2 = _node("conv2d", 480, 200,
+                 {"channels": 3, "kernel": 3, "stride": 1,
+                  "padding": 1, "activation": "sigmoid"})
+    iv = _node("image_viewer", 680, 200, {"title": "Stylized"})
+    si = _node("save_image", 680, 380,
+                 {"output_path": "./output/img2img_style.png"})
+    conns = [
+        _conn(li, c1),
+        _conn(c1, c2),
+        _conn(c2, iv),
+        _conn(c2, si),
+    ]
+    return _wrap("Img2Img Style (Conv)",
+                  [li, c1, c2, iv, si], conns,
+                  tags=["template", "vision", "img2img", "style", "conv"])
+
+
 _BUILDERS = {
     "mlp_mnist": template_mlp_mnist,
     "cnn_cifar": template_cnn_cifar,
@@ -301,6 +404,11 @@ _BUILDERS = {
     "tiny_llm_demo": template_tiny_llm_demo,
     "metamorph_m1": template_metamorph_m1,
     "metamorph_m5": template_metamorph_m5,
+    # Phase 56
+    "text2video_tiny": template_text2video_tiny,
+    "text2audio_tiny": template_text2audio_tiny,
+    "img2text_resnet": template_img2text_resnet,
+    "img2img_style": template_img2img_style,
 }
 
 
