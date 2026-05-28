@@ -125,6 +125,10 @@ class MainWindow(QMainWindow):
         a_arch_diag.setShortcut(QKeySequence("Ctrl+Shift+D"))
         a_arch_diag.triggered.connect(self._on_show_arch_diagram)
         view_menu.addAction(a_arch_diag)
+        a_bench_dash = QAction("Dashboard Benchmark", self)
+        a_bench_dash.setShortcut(QKeySequence("Ctrl+Shift+B"))
+        a_bench_dash.triggered.connect(self._on_open_benchmark_dashboard)
+        view_menu.addAction(a_bench_dash)
         view_menu.addSeparator()
         view_menu.addAction("Layout : Workspace", lambda: self._apply_preset("workspace"))
         view_menu.addAction("Layout : Compact", lambda: self._apply_preset("compact"))
@@ -556,6 +560,17 @@ class MainWindow(QMainWindow):
                 f"({n} groupes chargés)", 4000)
         except Exception as e:
             self.statusBar().showMessage(f"Erreur save group : {e}", 5000)
+
+    def _on_open_benchmark_dashboard(self):
+        """Phase 39 — ouvre dashboard benchmark non-modal."""
+        from ark.ui.dialogs.benchmark_dashboard import BenchmarkDashboard
+        if getattr(self, "_bench_dlg", None) is not None and \
+              self._bench_dlg.isVisible():
+            self._bench_dlg.raise_()
+            self._bench_dlg.activateWindow()
+            return
+        self._bench_dlg = BenchmarkDashboard(self, scene=self.scene)
+        self._bench_dlg.show()
 
     def _on_show_arch_diagram(self):
         """Phase 35 — génère HTML organigramme de la scene + ouvre browser."""

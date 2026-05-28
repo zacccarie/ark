@@ -606,6 +606,18 @@ def _register_dynamoscope():
 _register_dynamoscope()
 
 
+# Benchmark + audit (Phase 39)
+def _register_benchmark():
+    try:
+        from ark.core.benchmark_nodes import register_benchmark_handlers
+        register_benchmark_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] benchmark handlers failed: {e}", file=sys.stderr)
+
+_register_benchmark()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

@@ -568,6 +568,14 @@ def default_registry() -> NodeRegistry:
         import sys
         print(f"[ARK] dynamoscope specs failed: {e}", file=sys.stderr)
 
+    # Benchmark + audit (Phase 39)
+    try:
+        from ark.core.benchmark_nodes import register_benchmark_specs
+        register_benchmark_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] benchmark specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups
