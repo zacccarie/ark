@@ -179,9 +179,33 @@ class MainWindow(QMainWindow):
     # Status bar
     # ------------------------------------------------------------
     def _build_status_bar(self):
+        from PySide6.QtWidgets import QLabel
         sb = QStatusBar()
         self.setStatusBar(sb)
+        # Phase 36 : global state badge (right side)
+        self._state_badge = QLabel("READY", self)
+        self._state_badge.setProperty("role", "badge-success")
+        sb.addPermanentWidget(self._state_badge)
         sb.showMessage("ARK · ready")
+
+    def set_global_state(self, state: str, message: str = ""):
+        """Phase 36 : update global state badge (ready/compiling/training/error)."""
+        states = {
+            "ready": ("READY", "badge-success"),
+            "compiling": ("COMPILING", "badge-info"),
+            "training": ("TRAINING", "badge-info"),
+            "error": ("ERROR", "badge-error"),
+            "warning": ("WARNING", "badge-warn"),
+            "idle": ("IDLE", "badge"),
+        }
+        label, role = states.get(state, ("READY", "badge"))
+        if hasattr(self, "_state_badge"):
+            self._state_badge.setText(f"  ●  {label}")
+            self._state_badge.setProperty("role", role)
+            self._state_badge.style().unpolish(self._state_badge)
+            self._state_badge.style().polish(self._state_badge)
+        if message:
+            self.statusBar().showMessage(message, 3000)
 
     # ------------------------------------------------------------
     # Central widget : node editor

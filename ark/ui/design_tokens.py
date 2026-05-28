@@ -1,73 +1,93 @@
-"""ARK design tokens — système graphique unifié.
+"""ARK design tokens — Phase 36 refresh : softer, friendlier, animated.
 
-Philosophie :
-- Dark UI uniquement (graphite + noirs profonds).
-- Aucun gradient, aucune couleur fluo, aucune saturation gratuite.
-- Accent unique : rouge pur (#E11D2A). Pas d'autres couleurs vives.
-- Typo Arial famille (sans-serif) pour titres et corps.
-- Typo monospace (SF Mono / JetBrains Mono fallback) pour code/valeurs/IDs.
-- Espacement multiples de 4px (système 4-8-12-16-24-32-48).
-- Coins droits ou très légèrement arrondis (2-4px max). Pas de coins ronds.
-- Bordures fines, contrastes mesurés.
+Évolution :
+- Dark mais moins agressif (zinc-inspired CRM)
+- Accent rouge ARK gardé comme primary
+- Vert électrique signature pour états positifs (#00FF85 inspiré CRM)
+- Semantic colors enrichies (success/warning/info distincts)
+- Border radii plus arrondis (4-8px)
+- Durées d'animation standardisées
+- État indicators colorés (idle/training/ok/error/compiled)
 """
 
 # ============================================================
-# Couleurs
+# Couleurs — Fonds zinc-inspired (moins brutalistes que pure black)
 # ============================================================
 
-# Fonds : graphite profond → graphite clair (5 niveaux pour hiérarchie)
-BG_DEEP = "#0A0A0B"          # canvas principal
-BG_PANEL = "#111113"          # panneaux dock
-BG_PANEL_RAISED = "#16161A"   # cartes / nodes
-BG_OVERLAY = "#1C1C21"        # menus, popups
-BG_HIGHLIGHT = "#22222A"      # sélection, hover
+BG_DEEP = "#0E0E11"          # canvas principal (plus doux que pur noir)
+BG_PANEL = "#16161D"          # panneaux dock
+BG_PANEL_RAISED = "#1C1C25"   # cartes / nodes
+BG_OVERLAY = "#22222C"        # menus, popups
+BG_HIGHLIGHT = "#2A2A35"      # sélection, hover
+BG_INPUT = "#13131A"           # form fields
 
-# Texte : 4 niveaux
-FG_PRIMARY = "#F2F2F2"
-FG_SECONDARY = "#B6B6BE"
-FG_TERTIARY = "#7E7E88"
-FG_DISABLED = "#4A4A52"
+# Texte : 4 niveaux + 1 inverse
+FG_PRIMARY = "#F4F4F5"
+FG_SECONDARY = "#C4C4CB"
+FG_TERTIARY = "#8E8E98"
+FG_DISABLED = "#52525B"
+FG_INVERSE = "#0E0E11"  # texte sur fond clair (boutons accent)
 
-# Bordures fines
-BORDER_SUBTLE = "#22222A"
-BORDER_DEFAULT = "#2E2E37"
-BORDER_STRONG = "#43434F"
+# Bordures fines (multi-tier zinc)
+BORDER_SUBTLE = "#27272F"
+BORDER_DEFAULT = "#3A3A45"
+BORDER_STRONG = "#52525B"
+BORDER_FOCUS = "#71717A"
 
-# Accent UNIQUE : rouge pur
+# Accent ARK : rouge signature
 ACCENT = "#E11D2A"
 ACCENT_HOVER = "#F03340"
 ACCENT_PRESS = "#B5141F"
-ACCENT_DIM = "#421016"  # background overlay pour zones accentuées
+ACCENT_DIM = "#3E1018"
+ACCENT_SOFT = "rgba(225, 29, 42, 0.12)"  # bg overlay subtil
 
-# États sémantiques (mesurés, jamais fluo)
-SUCCESS = "#3B8E5C"   # vert sourd
-WARN = "#C49A2F"      # jaune-or sourd
-ERROR = ACCENT        # rouge = erreur ET accent unique
-INFO = "#3E7CB8"      # bleu sourd
+# Accent secondaire : vert électrique CRM-inspired pour états positifs
+ACCENT_GREEN = "#00FF85"
+ACCENT_GREEN_DIM = "#04331F"
+ACCENT_GREEN_SOFT = "rgba(0, 255, 133, 0.12)"
 
-# Sockets nodes (types de données)
-SOCKET_TENSOR = "#7E7E88"     # gris neutre
-SOCKET_NUMBER = "#A6A6AE"
-SOCKET_STRING = "#9C8C76"
-SOCKET_IMAGE = "#C49A2F"      # jaune sourd
-SOCKET_MODEL = "#3E7CB8"      # bleu sourd
-SOCKET_EXEC = ACCENT          # flux d'exécution = rouge accent
+# États sémantiques distincts (CRM-inspired multi-color)
+SUCCESS = "#00FF85"       # vert électrique : OK, compiled, trained
+SUCCESS_DIM = "#04331F"
+WARN = "#FBBF24"          # amber doux
+WARN_DIM = "#3A2A05"
+ERROR = "#F87171"         # rouge clair (≠ accent pour erreurs)
+ERROR_DIM = "#3F0F0F"
+INFO = "#38BDF8"          # cyan doux : training, computing
+INFO_DIM = "#0A2E45"
+
+# États nodes (indicateurs status dot)
+STATE_IDLE = FG_TERTIARY
+STATE_COMPILING = INFO
+STATE_TRAINING = INFO
+STATE_OK = SUCCESS
+STATE_ERROR = ERROR
+STATE_WARN = WARN
+
+# Sockets nodes (types de données) — palette élargie
+SOCKET_TENSOR = "#A1A1AA"     # zinc-400
+SOCKET_NUMBER = "#FBBF24"     # amber
+SOCKET_STRING = "#A78BFA"     # violet
+SOCKET_IMAGE = "#F472B6"      # pink
+SOCKET_MODEL = "#38BDF8"      # cyan
+SOCKET_EXEC = ACCENT          # rouge
+SOCKET_ANY = "#71717A"
 
 
 # ============================================================
-# Typographie
+# Typographie — Arial gardé, mono SF Mono
 # ============================================================
 
 FONT_SANS_FAMILY = '"Arial", "Helvetica Neue", "Helvetica", sans-serif'
-FONT_MONO_FAMILY = '"SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace'
+FONT_MONO_FAMILY = '"Menlo", "JetBrains Mono", "SF Mono", "Consolas", monospace'
 
-# Tailles (px) — échelle réduite
-FS_HERO = 18
-FS_H1 = 14
-FS_H2 = 12
-FS_BODY = 11
-FS_LABEL = 10
-FS_MICRO = 9
+# Tailles (px) — légèrement augmentées pour readability
+FS_HERO = 20
+FS_H1 = 15
+FS_H2 = 13
+FS_BODY = 12
+FS_LABEL = 11
+FS_MICRO = 10
 
 
 # ============================================================
@@ -85,12 +105,13 @@ S_8 = 64
 
 
 # ============================================================
-# Rayons coins (droits ou minimal)
+# Rayons coins — plus arrondis (friendlier)
 # ============================================================
 R_NONE = 0
-R_SMALL = 2
-R_MEDIUM = 4
-R_LARGE = 6   # uniquement pour grands panneaux
+R_SMALL = 4    # nodes, buttons standards
+R_MEDIUM = 6   # cards, inputs
+R_LARGE = 8    # panneaux, modaux
+R_PILL = 999   # status dots, badges
 
 
 # ============================================================
@@ -99,6 +120,25 @@ R_LARGE = 6   # uniquement pour grands panneaux
 B_HAIRLINE = 1
 B_REGULAR = 1
 B_EMPHASIS = 2
+B_FOCUS = 2
+
+
+# ============================================================
+# Animations durations (ms)
+# ============================================================
+DUR_FAST = 120       # micro interactions (hover, focus)
+DUR_NORMAL = 200     # standard transitions
+DUR_SLOW = 320       # state changes
+DUR_PULSE = 1200     # status pulse breath
+
+
+# ============================================================
+# Easings (QEasingCurve enum names)
+# ============================================================
+EASE_STANDARD = "OutCubic"   # default fluide
+EASE_EMPHASIZED = "OutBack"  # interactions importantes (bounce)
+EASE_LINEAR = "Linear"
+EASE_IN_OUT = "InOutCubic"
 
 
 # ============================================================
@@ -111,3 +151,12 @@ Z_NODE_SELECTED = 11
 Z_DRAG = 50
 Z_OVERLAY = 100
 Z_MODAL = 200
+
+
+# ============================================================
+# Shadows (élévations)
+# ============================================================
+SHADOW_SM = "0 1px 2px rgba(0, 0, 0, 0.4)"
+SHADOW_MD = "0 4px 8px rgba(0, 0, 0, 0.5)"
+SHADOW_LG = "0 8px 24px rgba(0, 0, 0, 0.6)"
+SHADOW_ACCENT = "0 0 0 2px rgba(225, 29, 42, 0.25)"  # focus ring

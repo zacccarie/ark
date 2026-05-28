@@ -95,32 +95,76 @@ def build_qss() -> str:
         font-size: {T.FS_MICRO}px;
     }}
 
-    /* Boutons */
+    /* Boutons — Phase 36 plus larges + rounded + soft hover */
     QPushButton {{
         background-color: {T.BG_PANEL_RAISED};
         color: {T.FG_PRIMARY};
         border: {T.B_HAIRLINE}px solid {T.BORDER_DEFAULT};
-        border-radius: {T.R_SMALL}px;
-        padding: {T.S_1}px {T.S_3}px;
+        border-radius: {T.R_MEDIUM}px;
+        padding: {T.S_2}px {T.S_4}px;
         font-size: {T.FS_BODY}px;
+        font-weight: 500;
+        min-height: 24px;
     }}
     QPushButton:hover {{
-        border-color: {T.BORDER_STRONG};
+        border-color: {T.BORDER_FOCUS};
         background-color: {T.BG_HIGHLIGHT};
+        color: {T.FG_PRIMARY};
     }}
     QPushButton:pressed {{
         background-color: {T.BG_OVERLAY};
+        padding-top: {T.S_2 + 1}px;
     }}
     QPushButton[role="accent"] {{
         background-color: {T.ACCENT};
         color: {T.FG_PRIMARY};
         border-color: {T.ACCENT};
+        font-weight: 600;
     }}
     QPushButton[role="accent"]:hover {{
         background-color: {T.ACCENT_HOVER};
+        border-color: {T.ACCENT_HOVER};
     }}
     QPushButton[role="accent"]:pressed {{
         background-color: {T.ACCENT_PRESS};
+    }}
+    QPushButton[role="success"] {{
+        background-color: {T.SUCCESS_DIM};
+        color: {T.SUCCESS};
+        border-color: {T.SUCCESS};
+        font-weight: 600;
+    }}
+    QPushButton[role="success"]:hover {{
+        background-color: {T.SUCCESS};
+        color: {T.FG_INVERSE};
+    }}
+    QPushButton[role="warn"] {{
+        background-color: {T.WARN_DIM};
+        color: {T.WARN};
+        border-color: {T.WARN};
+    }}
+    QPushButton[role="warn"]:hover {{
+        background-color: {T.WARN};
+        color: {T.FG_INVERSE};
+    }}
+    QPushButton[role="info"] {{
+        background-color: {T.INFO_DIM};
+        color: {T.INFO};
+        border-color: {T.INFO};
+    }}
+    QPushButton[role="info"]:hover {{
+        background-color: {T.INFO};
+        color: {T.FG_INVERSE};
+    }}
+    QPushButton[role="ghost"] {{
+        background-color: transparent;
+        border-color: transparent;
+        color: {T.FG_SECONDARY};
+    }}
+    QPushButton[role="ghost"]:hover {{
+        background-color: {T.BG_HIGHLIGHT};
+        color: {T.FG_PRIMARY};
+        border-color: {T.BORDER_DEFAULT};
     }}
     QPushButton:disabled {{
         color: {T.FG_DISABLED};
@@ -128,17 +172,65 @@ def build_qss() -> str:
         border-color: {T.BORDER_SUBTLE};
     }}
 
-    /* Inputs */
+    /* Status Badges (Phase 36) */
+    QLabel[role="badge"] {{
+        background-color: {T.BG_HIGHLIGHT};
+        border: {T.B_HAIRLINE}px solid {T.BORDER_DEFAULT};
+        border-radius: {T.R_PILL}px;
+        padding: {T.S_1}px {T.S_3}px;
+        font-size: {T.FS_MICRO}px;
+        font-weight: 600;
+        color: {T.FG_SECONDARY};
+    }}
+    QLabel[role="badge-success"] {{
+        background-color: {T.SUCCESS_DIM};
+        border: {T.B_HAIRLINE}px solid {T.SUCCESS};
+        border-radius: {T.R_PILL}px;
+        padding: {T.S_1}px {T.S_3}px;
+        font-size: {T.FS_MICRO}px;
+        font-weight: 600;
+        color: {T.SUCCESS};
+    }}
+    QLabel[role="badge-warn"] {{
+        background-color: {T.WARN_DIM};
+        border: {T.B_HAIRLINE}px solid {T.WARN};
+        border-radius: {T.R_PILL}px;
+        padding: {T.S_1}px {T.S_3}px;
+        font-size: {T.FS_MICRO}px;
+        font-weight: 600;
+        color: {T.WARN};
+    }}
+    QLabel[role="badge-error"] {{
+        background-color: {T.ERROR_DIM};
+        border: {T.B_HAIRLINE}px solid {T.ERROR};
+        border-radius: {T.R_PILL}px;
+        padding: {T.S_1}px {T.S_3}px;
+        font-size: {T.FS_MICRO}px;
+        font-weight: 600;
+        color: {T.ERROR};
+    }}
+    QLabel[role="badge-info"] {{
+        background-color: {T.INFO_DIM};
+        border: {T.B_HAIRLINE}px solid {T.INFO};
+        border-radius: {T.R_PILL}px;
+        padding: {T.S_1}px {T.S_3}px;
+        font-size: {T.FS_MICRO}px;
+        font-weight: 600;
+        color: {T.INFO};
+    }}
+
+    /* Inputs — Phase 36 plus arrondis + bg input */
     QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
-        background-color: {T.BG_DEEP};
+        background-color: {T.BG_INPUT};
         color: {T.FG_PRIMARY};
         border: {T.B_HAIRLINE}px solid {T.BORDER_DEFAULT};
-        border-radius: {T.R_SMALL}px;
-        padding: {T.S_1}px {T.S_2}px;
+        border-radius: {T.R_MEDIUM}px;
+        padding: {T.S_2}px {T.S_3}px;
         font-family: {T.FONT_MONO_FAMILY};
         font-size: {T.FS_BODY}px;
         selection-background-color: {T.ACCENT_DIM};
         selection-color: {T.FG_PRIMARY};
+        min-height: 22px;
     }}
     QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus,
     QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
@@ -269,13 +361,14 @@ def build_qss() -> str:
         letter-spacing: 1px;
     }}
 
-    /* ToolTip */
+    /* ToolTip — Phase 36 padded + rounded */
     QToolTip {{
         background-color: {T.BG_OVERLAY};
         color: {T.FG_PRIMARY};
         border: {T.B_HAIRLINE}px solid {T.BORDER_DEFAULT};
-        padding: {T.S_1}px {T.S_2}px;
-        font-size: {T.FS_MICRO}px;
+        border-radius: {T.R_MEDIUM}px;
+        padding: {T.S_2}px {T.S_3}px;
+        font-size: {T.FS_LABEL}px;
     }}
 
     /* Splitter handles */

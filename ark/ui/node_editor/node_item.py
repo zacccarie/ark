@@ -28,6 +28,9 @@ class NodeItem(QGraphicsItem):
         self.error: str | None = None
         self.width = self.DEFAULT_WIDTH
         self.user_height_extra = 0  # Phase 33 : redim vertical user (px additionnels)
+        # Phase 36 : status sémantique
+        self.status: str = "idle"  # idle | compiling | training | ok | error | warn
+        self._hover_scale = 1.0  # animé subtilement sur hover
 
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -125,6 +128,29 @@ class NodeItem(QGraphicsItem):
         if self.bypass:
             painter.fillRect(QRectF(self.width - 8, 4, 4, self.HEADER_H - 8),
                               QColor(T.ACCENT))
+
+        # Phase 36 : Status dot (top-right header)
+        status_color = {
+            "idle": T.STATE_IDLE,
+            "compiling": T.STATE_COMPILING,
+            "training": T.STATE_TRAINING,
+            "ok": T.STATE_OK,
+            "error": T.STATE_ERROR,
+            "warn": T.STATE_WARN,
+        }.get(self.status, T.STATE_IDLE)
+        dot_size = 8
+        dot_x = self.width - 16 if not self.bypass else self.width - 22
+        dot_y = 8
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(status_color)))
+        painter.drawEllipse(int(dot_x), dot_y, dot_size, dot_size)
+        # Glow autour si state actif (non-idle)
+        if self.status not in ("idle", ""):
+            from PySide6.QtGui import QRadialGradient
+            painter.setBrush(QBrush(QColor(status_color)))
+            painter.setOpacity(0.25)
+            painter.drawEllipse(int(dot_x) - 2, dot_y - 2, dot_size + 4, dot_size + 4)
+            painter.setOpacity(1.0)
 
         # Category microlabel
         font_micro = QFont("Arial", T.FS_MICRO)
@@ -336,8 +362,20 @@ class NodeItem(QGraphicsItem):
 
     def set_error(self, msg: str | None):
         self.error = msg
+        if msg:
+            self.status = "error"
         self.update()
         self.setToolTip(self._build_tooltip())
+
+    def set_status(self, status: str):
+        """Phase 36 : update status (idle|compiling|training|ok|error|warn)."""
+        if status not in ("idle", "compiling", "training", "ok", "error", "warn"):
+            return
+        self.status = status
+        if status != "error":
+            # Clear error si on passe à autre chose
+            pass
+        self.update()
 
     def _build_tooltip(self) -> str:
         """HTML tooltip riche : description + I/O + erreur."""
