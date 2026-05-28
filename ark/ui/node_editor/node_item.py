@@ -273,15 +273,27 @@ class NodeItem(QGraphicsItem):
                              f"⟨ preview {self.spec.name} ⟩")
 
     def _paint_image_placeholder(self, painter, rect):
-        # Phase 51 : si preview image dispo, render scaled
+        # Phase 52 : preserve aspect ratio (no width stretch)
         if self._preview_qimage is not None:
             try:
                 from PySide6.QtCore import QRectF as _QR
-                painter.drawImage(rect, self._preview_qimage)
-                # Border 1px subtil pour cadre
+                img = self._preview_qimage
+                iw, ih = img.width(), img.height()
+                rw, rh = rect.width(), rect.height()
+                if iw <= 0 or ih <= 0:
+                    raise ValueError("invalid image")
+                scale = min(rw / iw, rh / ih)
+                dw, dh = iw * scale, ih * scale
+                dx = rect.x() + (rw - dw) / 2
+                dy = rect.y() + (rh - dh) / 2
+                target = _QR(dx, dy, dw, dh)
+                # Background fond noir pour letterboxing
+                painter.fillRect(rect, QColor(T.BG_DEEP))
+                painter.drawImage(target, img)
+                # Border 1px PRIMARY
                 painter.setPen(QPen(QColor(T.PRIMARY), 1))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRect(rect)
+                painter.drawRect(target)
                 return
             except Exception:
                 pass

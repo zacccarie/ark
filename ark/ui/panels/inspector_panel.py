@@ -140,6 +140,19 @@ class InspectorPanel(QWidget):
         v.addWidget(self._info_host)
         self._info_host.hide()
 
+        # Phase 52 : preview thumbnail si node a _preview_qimage
+        self._preview_label = QLabel("", self)
+        self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._preview_label.setStyleSheet(
+            f"background-color: {T.BG_DEEP}; "
+            f"border: 1px solid {T.PRIMARY}; "
+            f"border-radius: {T.R_MEDIUM}px; "
+            f"padding: 4px;")
+        self._preview_label.setMinimumHeight(200)
+        self._preview_label.setMaximumHeight(280)
+        v.addWidget(self._preview_label)
+        self._preview_label.hide()
+
         # Chart placeholder (visible seulement pour nodes observer)
         self._chart_host = QWidget(self)
         from PySide6.QtWidgets import QVBoxLayout as _VBL
@@ -170,6 +183,8 @@ class InspectorPanel(QWidget):
         self.subtitle.setText(f"{node.spec.category}   ·   id {node.id[:14]}")
         # Bloc explicatif (Phase 30)
         self._populate_info_block(node.spec)
+        # Phase 52 : preview thumbnail si présent
+        self._update_preview(node)
         # Chart pour observer / vg_block
         if node.spec.name == "observer":
             self._metric_chart = MetricChart(self._chart_host, width=260, height=140)
@@ -334,6 +349,27 @@ class InspectorPanel(QWidget):
             self._info_sep.show()
         else:
             self._info_host.hide()
+
+    def _update_preview(self, node):
+        """Phase 52 : affiche preview si node a _preview_qimage."""
+        qimg = getattr(node, "_preview_qimage", None)
+        if qimg is None:
+            self._preview_label.hide()
+            self._preview_label.clear()
+            return
+        try:
+            from PySide6.QtGui import QPixmap
+            pix = QPixmap.fromImage(qimg)
+            # Scale preserving aspect ratio
+            max_w = self._preview_label.width() or 280
+            max_h = 260
+            scaled = pix.scaled(max_w, max_h,
+                                  Qt.AspectRatioMode.KeepAspectRatio,
+                                  Qt.TransformationMode.SmoothTransformation)
+            self._preview_label.setPixmap(scaled)
+            self._preview_label.show()
+        except Exception:
+            self._preview_label.hide()
 
     def push_live_metrics(self, node_id: str, metrics: dict):
         """Push depuis trainer.observations vers chart si node sélectionné."""
