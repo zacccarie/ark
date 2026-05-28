@@ -45,6 +45,12 @@ PRIMARY_PRESS = "#00CC6E"
 PRIMARY_DIM = "#052E1A"
 PRIMARY_SOFT = "rgba(0, 255, 133, 0.08)"
 
+# Action primary = bleu (pour bouton Run/Compile principal style desktop moderne)
+ACCENT_BLUE = "#3B82F6"
+ACCENT_BLUE_HOVER = "#2563EB"
+ACCENT_BLUE_PRESS = "#1D4ED8"
+ACCENT_BLUE_DIM = "#0F2240"
+
 # Accent = rouge ARK gardé pour erreurs + accents secondaires
 ACCENT = "#E11D2A"
 ACCENT_HOVER = "#F03340"

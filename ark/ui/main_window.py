@@ -44,10 +44,11 @@ class MainWindow(QMainWindow):
         self.undo_stack.setUndoLimit(200)
         self._current_file: str | None = None
         self._build_menus()
-        self._build_toolbar()
         self._build_status_bar()
         self._build_central()
         self._build_docks()
+        # Phase 42 : overlays flottants au lieu du toolbar texte
+        self._setup_floating_overlays()
 
     # ------------------------------------------------------------
     # Menus
@@ -172,22 +173,143 @@ class MainWindow(QMainWindow):
     # Toolbar (top)
     # ------------------------------------------------------------
     def _build_toolbar(self):
-        tb = QToolBar("Main")
-        tb.setMovable(False)
-        tb.setIconSize(QSize(16, 16))
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
-        a_c = tb.addAction("▶ Compiler", self._on_compile)
-        a_c.setToolTip("Compile le graphe en nn.Module PyTorch.\nRaccourci : Ctrl+R")
-        a_t = tb.addAction("⏵ Entraîner", self._on_train)
-        a_t.setToolTip("Lance l'entraînement sur le modèle compilé (QThread).\nRaccourci : Ctrl+T")
-        a_s = tb.addAction("■ Stop", self._on_stop)
-        a_s.setToolTip("Interrompt l'entraînement en cours.")
-        tb.addSeparator()
-        a_r = tb.addAction("⌕ Rechercher node", self._on_search)
-        a_r.setToolTip("Recherche fuzzy dans le registry (double-clic canvas).")
-        tb.addSeparator()
-        a_g = tb.addAction("? Glossaire", self._on_open_glossary)
-        a_g.setToolTip("Définitions des concepts ARK.\nRaccourci : F1")
+        """Phase 42 : toolbar texte remplacé par overlays floating (cf _setup_floating_overlays)."""
+        # Actions toujours accessibles via raccourcis Cmd+R/T/S + menus
+        pass
+
+    def _setup_floating_overlays(self):
+        """Phase 42 : 4 widgets overlay au-dessus du canvas central."""
+        from ark.ui.floating_overlays import (
+            LeftRail, ActionBar, StatsOverlay, ViewControls,
+        )
+
+        # Parent = tabs widget central (les overlays flottent au-dessus du QGraphicsView)
+        host = self.tabs
+        self._left_rail = LeftRail(host)
+        self._action_bar = ActionBar(host)
+        self._stats_overlay = StatsOverlay(host)
+        self._view_controls = ViewControls(host)
+
+        for w in (self._left_rail, self._action_bar,
+                    self._stats_overlay, self._view_controls):
+            w.show()
+            w.raise_()
+
+        # Wire ActionBar signals
+        self._action_bar.compile_clicked.connect(self._on_action_run)
+        self._action_bar.stop_clicked.connect(self._on_stop)
+        self._action_bar.extensions_clicked.connect(self._on_browse_templates)
+        self._action_bar.btn_inspector_toggle.clicked.connect(
+            self._toggle_inspector)
+
+        # Wire LeftRail
+        self._left_rail.panel_toggled.connect(self._on_left_rail_panel)
+        self._left_rail.action_triggered.connect(self._on_left_rail_action)
+        # Initial states
+        self._left_rail.btn_palette.setChecked(True)
+        self._left_rail.btn_inspector.setChecked(True)
+
+        # Wire ViewControls
+        self._view_controls.zoom_changed.connect(self._on_zoom_changed)
+
+        # Initial stats
+        self._update_overlay_stats()
+
+        # Reposition timer
+        self._reposition_overlays()
+
+    def _on_action_run(self):
+        """Phase 42 : routage selon mode dropdown ActionBar."""
+        mode = self._action_bar.mode_combo.currentText()
+        if mode == "Compiler":
+            self._on_compile()
+        elif mode == "Entraîner":
+            self._on_train()
+        elif mode == "Bench":
+            self._on_open_benchmark_dashboard()
+
+    def _on_left_rail_panel(self, name: str):
+        """Toggle dock panels selon name."""
+        mapping = {
+            "palette": getattr(self, "dock_palette", None),
+            "inspector": getattr(self, "dock_inspector", None),
+            "terminal": getattr(self, "dock_terminal", None),
+        }
+        dock = mapping.get(name)
+        if dock is not None:
+            dock.setVisible(not dock.isVisible())
+
+    def _on_left_rail_action(self, name: str):
+        """Actions one-shot depuis left rail."""
+        if name == "help":
+            self._on_open_help_page()
+        elif name == "shortcuts":
+            self._on_open_shortcuts()
+        elif name == "settings":
+            self.statusBar().showMessage("Préférences (à venir)", 2000)
+
+    def _toggle_inspector(self):
+        if hasattr(self, "dock_inspector"):
+            self.dock_inspector.setVisible(not self.dock_inspector.isVisible())
+
+    def _on_zoom_changed(self, factor: float):
+        if hasattr(self, "view") and self.view is not None:
+            self.view.resetTransform()
+            self.view.scale(factor, factor)
+
+    def _update_overlay_stats(self):
+        if not hasattr(self, "_stats_overlay"):
+            return
+        try:
+            scene = self.scene
+            nodes = list(scene.nodes()) if scene is not None else []
+            sel = sum(1 for n in nodes if n.isSelected())
+            self._stats_overlay.set_nodes(len(nodes), sel)
+        except Exception:
+            pass
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_left_rail"):
+            self._reposition_overlays()
+
+    def _reposition_overlays(self):
+        if not hasattr(self, "_left_rail"):
+            return
+        host = self.tabs
+        if host is None:
+            return
+        host_rect = host.rect()
+        margin = 16
+
+        # LeftRail : full height left
+        rail_w = self._left_rail.width()
+        self._left_rail.setGeometry(0, 0, rail_w, host_rect.height())
+
+        # ActionBar : top-right
+        ab = self._action_bar
+        ab.adjustSize()
+        ab_w = ab.sizeHint().width()
+        ab_h = ab.sizeHint().height()
+        ab.setGeometry(host_rect.width() - ab_w - margin, margin, ab_w, ab_h)
+
+        # StatsOverlay : bottom-left (above left rail bottom icons)
+        so = self._stats_overlay
+        so.adjustSize()
+        so_w = so.sizeHint().width()
+        so_h = so.sizeHint().height()
+        so.setGeometry(rail_w + margin,
+                          host_rect.height() - so_h - margin,
+                          so_w, so_h)
+
+        # ViewControls : bottom-right
+        vc = self._view_controls
+        vc.adjustSize()
+        vc_w = vc.sizeHint().width()
+        vc_h = vc.sizeHint().height()
+        vc.setGeometry(host_rect.width() - vc_w - margin,
+                          host_rect.height() - vc_h - margin,
+                          vc_w, vc_h)
 
     # ------------------------------------------------------------
     # Status bar
