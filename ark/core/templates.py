@@ -10,6 +10,7 @@ TEMPLATES_LIST = [
     ("transformer_mini", "Transformer mini (text → 2× transformer block)"),
     ("vg_mutable", "VG mutable + observer + trigger_rule (vagues B+C)"),
     ("diffusion_basic", "Diffusion basic (loader+CLIP+empty_latent+KSampler+VAE+save)"),
+    ("text2image_sd", "Text2Image SD (real_backend=True, OFA small SD ~400MB)"),
     ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
     ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
 ]
@@ -144,6 +145,49 @@ def template_diffusion_basic() -> dict:
                   tags=["template", "diffusion", "comfyui-like"])
 
 
+def template_text2image_sd() -> dict:
+    """Phase 47 : Text2Image SD réel.
+
+    Workflow validé Phase 46 : 88.9s génération 512×512 sur MPS avec
+    OFA-Sys/small-stable-diffusion-v0 (~400MB).
+    real_backend=True sur loader/clip/sampler/vae.
+    """
+    loader = _node("diffusion_model_loader", 0, 250,
+                     {"checkpoint": "OFA-Sys/small-stable-diffusion-v0",
+                      "device": "auto", "real_backend": True})
+    pos = _node("clip_text_encode", 320, 80,
+                  {"text": "a cute cyberpunk cat sitting on a neon sign at night, "
+                              "vivid colors, masterpiece, 4k",
+                   "real_backend": True})
+    neg = _node("clip_text_encode", 320, 280,
+                  {"text": "blurry, low quality, distorted, bad anatomy",
+                   "real_backend": True})
+    latent = _node("empty_latent_image", 320, 480,
+                     {"width": 512, "height": 512, "batch_size": 1})
+    sampler = _node("k_sampler", 640, 250,
+                       {"seed": 42, "steps": 20, "cfg": 7.5,
+                        "sampler": "euler", "scheduler": "normal", "denoise": 1.0,
+                        "real_backend": True})
+    vae_dec = _node("vae_decode", 960, 250, {"real_backend": True})
+    save = _node("save_image", 1280, 250,
+                   {"prefix": "ark_t2i_", "dir": "./output"})
+    conns = [
+        _conn(loader, sampler, fs=0, ts=0),  # model
+        _conn(loader, pos, fs=1, ts=0),       # clip → positive
+        _conn(loader, neg, fs=1, ts=0),       # clip → negative
+        _conn(loader, vae_dec, fs=2, ts=0),   # vae
+        _conn(pos, sampler, fs=0, ts=1),      # positive cond
+        _conn(neg, sampler, fs=0, ts=2),      # negative cond
+        _conn(latent, sampler, fs=0, ts=3),   # initial latent
+        _conn(sampler, vae_dec, fs=0, ts=1),  # sampled latent → vae
+        _conn(vae_dec, save),                  # image → save
+    ]
+    return _wrap("Text2Image SD (real)",
+                  [loader, pos, neg, latent, sampler, vae_dec, save], conns,
+                  tags=["template", "diffusion", "text2image", "stable-diffusion",
+                          "real_backend"])
+
+
 def template_metamorph_m1() -> dict:
     """Metamorph M1 CriticalGrowNet : MLP mutable avec criticality target β=-2."""
     inp = _node("image_input", 0, 200, {"shape": "[1, 28, 28]"})
@@ -185,6 +229,7 @@ _BUILDERS = {
     "transformer_mini": template_transformer_mini,
     "vg_mutable": template_vg_mutable,
     "diffusion_basic": template_diffusion_basic,
+    "text2image_sd": template_text2image_sd,
     "metamorph_m1": template_metamorph_m1,
     "metamorph_m5": template_metamorph_m5,
 }
