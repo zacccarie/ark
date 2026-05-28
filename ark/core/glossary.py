@@ -459,6 +459,38 @@ GLOSSARY: list[GlossaryEntry] = [
 ]
 
 
+# Auto-merge from glossary_data CONCEPTS (Phase 29)
+def _norm_term(t: str) -> str:
+    return t.lower().strip().replace("·", "").replace("(", "").replace(")", "")
+
+
+def _merge_glossary_data() -> None:
+    """Importe les 400+ concepts de glossary_data dans GLOSSARY (idempotent)."""
+    try:
+        from ark.core.glossary_data import CONCEPTS
+    except ImportError:
+        return
+    existing = {_norm_term(e.term) for e in GLOSSARY}
+    seen_new: set[str] = set()
+    for c in CONCEPTS:
+        norm = _norm_term(c["title"])
+        if norm in existing or norm in seen_new:
+            continue
+        seen_new.add(norm)
+        short = c.get("short", "") or c["title"]
+        long_ = c.get("long", "") or short or c["title"]
+        GLOSSARY.append(GlossaryEntry(
+            term=c["title"],
+            category=c["category"],
+            short=short,
+            long=long_,
+            related=tuple(c.get("related", ())),
+        ))
+
+
+_merge_glossary_data()
+
+
 def by_category() -> dict[str, list[GlossaryEntry]]:
     """Regroupe les entrées par catégorie."""
     out: dict[str, list[GlossaryEntry]] = {}

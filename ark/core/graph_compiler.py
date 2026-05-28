@@ -534,6 +534,18 @@ def _register_research():
 _register_research()
 
 
+# Glossary auto-handlers (Phase 29) — 50+ handlers PyTorch génériques
+def _register_glossary_handlers():
+    try:
+        from ark.core.auto_register import register_glossary_handlers
+        register_glossary_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] auto_register handlers failed: {e}", file=sys.stderr)
+
+_register_glossary_handlers()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

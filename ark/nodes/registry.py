@@ -513,6 +513,14 @@ def default_registry() -> NodeRegistry:
     except Exception:
         pass
 
+    # Glossary massive (Phase 29) — 400+ concepts, 150+ nodes auto-enregistrés
+    try:
+        from ark.core.auto_register import register_glossary_specs
+        register_glossary_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] auto_register specs failed: {e}", file=sys.stderr)
+
     # User plugins (Phase 21) — chargés depuis ~/.ark/plugins/
     try:
         from ark.core.plugins import register_plugins
