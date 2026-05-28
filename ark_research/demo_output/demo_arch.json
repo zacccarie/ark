@@ -1,0 +1,119 @@
+{
+  "version": "ark-arch-v1",
+  "name": "mnist_cnn_demo",
+  "nodes": [
+    {
+      "id": "image_input_8a0f02",
+      "type": "image_input",
+      "params": {
+        "shape": "[1, 28, 28]"
+      },
+      "bypass": false,
+      "width": 200,
+      "height_extra": 0,
+      "pos": [
+        50.0,
+        100.0
+      ]
+    },
+    {
+      "id": "conv2d_e6880d",
+      "type": "conv2d",
+      "params": {
+        "filters": 32,
+        "kernel_size": 3,
+        "activation": "relu"
+      },
+      "bypass": false,
+      "width": 200,
+      "height_extra": 0,
+      "pos": [
+        250.0,
+        100.0
+      ]
+    },
+    {
+      "id": "conv2d_f4d70e",
+      "type": "conv2d",
+      "params": {
+        "filters": 64,
+        "kernel_size": 3,
+        "activation": "relu"
+      },
+      "bypass": false,
+      "width": 200,
+      "height_extra": 0,
+      "pos": [
+        450.0,
+        100.0
+      ]
+    },
+    {
+      "id": "dense_df26c5",
+      "type": "dense",
+      "params": {
+        "neurons": 128,
+        "activation": "gelu",
+        "dropout": 0.2
+      },
+      "bypass": false,
+      "width": 200,
+      "height_extra": 0,
+      "pos": [
+        650.0,
+        100.0
+      ]
+    },
+    {
+      "id": "dense_470632",
+      "type": "dense",
+      "params": {
+        "neurons": 10,
+        "activation": "none",
+        "dropout": 0.0
+      },
+      "bypass": false,
+      "width": 200,
+      "height_extra": 0,
+      "pos": [
+        850.0,
+        100.0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from_node": "image_input_8a0f02",
+      "from_socket": 0,
+      "to_node": "conv2d_e6880d",
+      "to_socket": 0
+    },
+    {
+      "from_node": "conv2d_e6880d",
+      "from_socket": 0,
+      "to_node": "conv2d_f4d70e",
+      "to_socket": 0
+    },
+    {
+      "from_node": "conv2d_f4d70e",
+      "from_socket": 0,
+      "to_node": "dense_df26c5",
+      "to_socket": 0
+    },
+    {
+      "from_node": "dense_df26c5",
+      "from_socket": 0,
+      "to_node": "dense_470632",
+      "to_socket": 0
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-05-28T17:54:29.566246+00:00",
+    "num_classes": 10,
+    "tags": [
+      "demo",
+      "mnist",
+      "cnn"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "architecture": {
+    "n_nodes": 5,
+    "node_types": [
+      "image_input",
+      "conv2d",
+      "conv2d",
+      "dense",
+      "dense"
+    ],
+    "n_params": 6442762,
+    "compile_time_ms": 21.73866704106331
+  },
+  "training": {
+    "device": "mps",
+    "epochs": 2,
+    "n_train": 6000,
+    "n_val": 1000,
+    "train_time_s": 2.273915166966617,
+    "final_val_acc": 0.952,
+    "val_acc_per_epoch": [
+      0.921,
+      0.952
+    ],
+    "first_loss": 2.3080739974975586,
+    "last_loss": 0.19178497791290283
+  },
+  "confusion_diag": [
+    83,
+    125,
+    108,
+    105,
+    109,
+    81,
+    80,
+    95,
+    79,
+    87
+  ]
+}
