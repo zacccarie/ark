@@ -176,6 +176,51 @@ class InspectorPanel(QWidget):
         v.addWidget(self._output_host)
         self._output_host.hide()
 
+        # Phase 56b : Audio player widget (▶/⏸/💾)
+        self._audio_host = QWidget(self)
+        self._audio_layout = QVBoxLayout(self._audio_host)
+        self._audio_layout.setContentsMargins(0, 0, 0, T.S_2)
+        self._audio_layout.setSpacing(T.S_1)
+        self._audio_title = QLabel("Audio Player", self._audio_host)
+        self._audio_title.setStyleSheet(
+            f"font-size: {T.FS_MICRO}px; color: {T.SUCCESS}; "
+            f"text-transform: uppercase; letter-spacing: 1px; font-weight: 700;")
+        self._audio_layout.addWidget(self._audio_title)
+        self._audio_path_label = QLabel("", self._audio_host)
+        self._audio_path_label.setStyleSheet(
+            f"font-family: 'Menlo',monospace; font-size: {T.FS_MICRO}px; "
+            f"color: {T.FG_TERTIARY};")
+        self._audio_path_label.setWordWrap(True)
+        self._audio_layout.addWidget(self._audio_path_label)
+        # Button row
+        _btn_row = QWidget(self._audio_host)
+        _btn_row_h = QHBoxLayout(_btn_row)
+        _btn_row_h.setContentsMargins(0, 0, 0, 0)
+        _btn_row_h.setSpacing(T.S_2)
+        self._audio_play_btn = QPushButton("▶  Play", _btn_row)
+        self._audio_play_btn.setStyleSheet(
+            f"background-color: {T.SUCCESS}; color: {T.BG_DEEP}; "
+            f"border: none; border-radius: {T.R_MEDIUM}px; "
+            f"padding: 6px 12px; font-weight: 700;")
+        self._audio_play_btn.clicked.connect(self._on_audio_play_toggle)
+        _btn_row_h.addWidget(self._audio_play_btn)
+        self._audio_dl_btn = QPushButton("⬇  Download", _btn_row)
+        self._audio_dl_btn.setStyleSheet(
+            f"background-color: {T.BG_PANEL_RAISED}; color: {T.FG_PRIMARY}; "
+            f"border: 1px solid {T.BORDER_DEFAULT}; "
+            f"border-radius: {T.R_MEDIUM}px; padding: 6px 12px;")
+        self._audio_dl_btn.clicked.connect(self._on_audio_download)
+        _btn_row_h.addWidget(self._audio_dl_btn)
+        _btn_row_h.addStretch(1)
+        self._audio_layout.addWidget(_btn_row)
+        v.addWidget(self._audio_host)
+        self._audio_host.hide()
+
+        # QMediaPlayer instance lazy
+        self._media_player = None
+        self._audio_output = None
+        self._is_playing = False
+
         # Stored compiled modules_dict (set by MainWindow post-compile)
         self._modules_dict: dict = {}
 
@@ -213,6 +258,8 @@ class InspectorPanel(QWidget):
         self._update_preview(node)
         # Phase 55 : live output (text_viewer, number_display, tiny_llm_generate, top_k)
         self._update_live_output(node)
+        # Phase 56b : audio player widget
+        self._update_audio_player(node)
         # Chart pour observer / vg_block
         if node.spec.name == "observer":
             self._metric_chart = MetricChart(self._chart_host, width=260, height=140)
@@ -399,12 +446,98 @@ class InspectorPanel(QWidget):
         except Exception:
             self._preview_label.hide()
 
+    def _update_audio_player(self, node):
+        """Phase 56b : affiche play/pause/download si node a last_audio_path."""
+        if not self._modules_dict or node is None:
+            self._audio_host.hide()
+            return
+        mod = self._modules_dict.get(node.id)
+        path = getattr(mod, "last_audio_path", None) if mod else None
+        if not path or path.startswith("err:") or not Path(path).exists():
+            self._audio_host.hide()
+            self._stop_audio()
+            return
+        self._audio_path_label.setText(path)
+        self._audio_host.show()
+        # Reset play state on new path
+        self._stop_audio()
+
+    def _ensure_media_player(self):
+        if self._media_player is None:
+            try:
+                from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+                self._media_player = QMediaPlayer(self)
+                self._audio_output = QAudioOutput(self)
+                self._media_player.setAudioOutput(self._audio_output)
+                self._audio_output.setVolume(0.7)
+                # Reset btn when finished
+                self._media_player.playbackStateChanged.connect(
+                    self._on_playback_state)
+            except Exception as e:
+                self._media_player = None
+        return self._media_player
+
+    def _on_playback_state(self, state):
+        try:
+            from PySide6.QtMultimedia import QMediaPlayer
+            if state == QMediaPlayer.PlaybackState.PlayingState:
+                self._audio_play_btn.setText("⏸  Pause")
+                self._is_playing = True
+            else:
+                self._audio_play_btn.setText("▶  Play")
+                self._is_playing = False
+        except Exception:
+            pass
+
+    def _on_audio_play_toggle(self):
+        path = self._audio_path_label.text()
+        if not path or not Path(path).exists():
+            return
+        mp = self._ensure_media_player()
+        if mp is None:
+            return
+        try:
+            from PySide6.QtCore import QUrl
+            if self._is_playing:
+                mp.pause()
+            else:
+                if mp.source().toString() != QUrl.fromLocalFile(path).toString():
+                    mp.setSource(QUrl.fromLocalFile(path))
+                mp.play()
+        except Exception:
+            pass
+
+    def _stop_audio(self):
+        if self._media_player is not None:
+            try:
+                self._media_player.stop()
+            except Exception:
+                pass
+        self._audio_play_btn.setText("▶  Play")
+        self._is_playing = False
+
+    def _on_audio_download(self):
+        path = self._audio_path_label.text()
+        if not path or not Path(path).exists():
+            return
+        try:
+            dest, _ = QFileDialog.getSaveFileName(
+                self, "Save audio as…",
+                str(Path.home() / "Downloads" / Path(path).name),
+                "Audio (*.wav *.mp3);;All files (*)")
+            if dest:
+                import shutil
+                shutil.copy2(path, dest)
+        except Exception:
+            pass
+
     def set_modules_dict(self, modules_dict: dict):
         """Phase 55 : appelé par MainWindow post-compile pour exposer outputs."""
         self._modules_dict = modules_dict or {}
         # Refresh affichage si node actuel concerné
         if self._node is not None:
             self._update_live_output(self._node)
+            self._update_audio_player(self._node)
 
     def _update_live_output(self, node):
         """Phase 55 : affiche last_text/last_value/last_predictions du module compilé."""

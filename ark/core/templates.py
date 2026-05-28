@@ -323,7 +323,9 @@ def template_text2audio_tiny() -> dict:
                    "note_dur": 0.25, "base_octave": 4})
     syn = _node("audio_synth", 580, 200,
                   {"sample_rate": 22050, "envelope": "adsr", "wave": "sine"})
-    aw = _node("audio_writer", 880, 200,
+    ap = _node("audio_player", 880, 200,
+                 {"title": "Generated Audio", "sample_rate": 22050})
+    aw = _node("audio_writer", 1180, 200,
                  {"output_path": "./output/text2audio.wav",
                   "sample_rate": 22050})
     nd = _node("number_display", 880, 380,
@@ -331,11 +333,12 @@ def template_text2audio_tiny() -> dict:
     conns = [
         _conn(txt, mel),
         _conn(mel, syn),
-        _conn(syn, aw),
+        _conn(syn, ap),
+        _conn(ap, aw),
         _conn(syn, nd),
     ]
     return _wrap("Text2Audio Tiny",
-                  [txt, mel, syn, aw, nd], conns,
+                  [txt, mel, syn, ap, aw, nd], conns,
                   tags=["template", "audio", "multimodal", "text2audio"])
 
 

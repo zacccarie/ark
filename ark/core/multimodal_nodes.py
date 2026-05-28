@@ -264,6 +264,49 @@ class AudioWriter(nn.Module):
 
 
 # ============================================================
+# Audio player (Inspector renders play/pause/download)
+# ============================================================
+
+class AudioPlayer(nn.Module):
+    """Waveform → temp .wav. Inspector renders ▶/⏸/💾 widget.
+
+    Marker class. Stocke `last_audio_path` lu par InspectorPanel
+    qui crée QMediaPlayer + buttons.
+    """
+
+    def __init__(self, sample_rate: int = 22050, title: str = "Audio"):
+        super().__init__()
+        self.sample_rate = sample_rate
+        self.title = title
+        self.last_audio_path: Optional[str] = None
+        self.last_waveform: Optional[torch.Tensor] = None
+        # Flag picked up by Inspector
+        self._is_audio_player = True
+
+    def forward(self, x):
+        if not isinstance(x, torch.Tensor):
+            return x
+        try:
+            import numpy as np
+            from scipy.io import wavfile
+            w = x.detach().cpu()
+            if w.dim() == 2:
+                w = w[0]
+            self.last_waveform = w
+            w_np = w.clamp(-1, 1).mul(32767).short().numpy()
+            # Persistent path : ~/.ark/audio_player/<id>.wav
+            cache_dir = Path.home() / ".ark" / "audio_player"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            node_id = getattr(self, "_ark_node_id", "default")
+            out = cache_dir / f"{node_id}.wav"
+            wavfile.write(str(out), self.sample_rate, w_np)
+            self.last_audio_path = str(out)
+        except Exception as e:
+            self.last_audio_path = f"err: {e}"
+        return x
+
+
+# ============================================================
 # ImageNet classifier (real pretrained resnet18)
 # ============================================================
 
@@ -450,6 +493,15 @@ def h_audio_writer(node, in_shapes):
     return m, in_shapes[0] if in_shapes else (1,)
 
 
+def h_audio_player(node, in_shapes):
+    m = AudioPlayer(
+        sample_rate=int(node.params.get("sample_rate", 22050)),
+        title=node.params.get("title", "Audio"),
+    )
+    m._ark_node_id = getattr(node, "id", "audio")
+    return m, in_shapes[0] if in_shapes else (1,)
+
+
 def h_imagenet_classifier(node, in_shapes):
     m = ImageNetClassifier(
         backbone=node.params.get("backbone", "resnet18"),
@@ -472,6 +524,7 @@ def register_multimodal_handlers(handlers_dict: dict) -> bool:
     handlers_dict["text_to_melody"] = h_text_to_melody
     handlers_dict["audio_synth"] = h_audio_synth
     handlers_dict["audio_writer"] = h_audio_writer
+    handlers_dict["audio_player"] = h_audio_player
     handlers_dict["imagenet_classifier"] = h_imagenet_classifier
     handlers_dict["caption_formatter"] = h_caption_formatter
     return True
@@ -564,6 +617,24 @@ def register_multimodal_specs(registry) -> bool:
         description="Waveform tensor ∈ [-1,1] → .wav int16 via scipy.io.wavfile.",
         role="Save waveform to .wav.",
         function="clamp(-1,1)·32767 → int16 → wavfile.write.",
+        has_thumbnail=True,
+    ))
+
+    registry.register(NodeSpec(
+        name="audio_player", title="Audio Player ▶",
+        category=CAT,
+        inputs=[SocketSpec("waveform", "tensor")],
+        outputs=[SocketSpec("waveform", "tensor")],
+        params=[
+            ParamSpec("title", "str", "Audio"),
+            ParamSpec("sample_rate", "int", 22050, min=8000, max=48000),
+        ],
+        description="Waveform → .wav temp file + Inspector renders "
+                       "play/pause/download buttons (QMediaPlayer). "
+                       "Pour écouter audio généré dans l'app.",
+        role="Inline audio playback widget.",
+        function="Write ~/.ark/audio_player/<id>.wav. Inspector lit "
+                    "last_audio_path → QMediaPlayer + QPushButton ▶/⏸/💾.",
         has_thumbnail=True,
     ))
 

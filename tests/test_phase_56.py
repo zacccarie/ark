@@ -22,7 +22,7 @@ def test_specs_registered():
     names = {s.name for s in mm}
     assert names == {
         "text_to_frame_seq", "video_writer",
-        "text_to_melody", "audio_synth", "audio_writer",
+        "text_to_melody", "audio_synth", "audio_writer", "audio_player",
         "imagenet_classifier", "caption_formatter",
     }
 
@@ -30,9 +30,32 @@ def test_specs_registered():
 def test_handlers_registered():
     from ark.core.graph_compiler import HANDLERS
     for name in ("text_to_frame_seq", "video_writer", "text_to_melody",
-                 "audio_synth", "audio_writer", "imagenet_classifier",
-                 "caption_formatter"):
+                 "audio_synth", "audio_writer", "audio_player",
+                 "imagenet_classifier", "caption_formatter"):
         assert name in HANDLERS, f"Missing handler: {name}"
+
+
+def test_audio_player_writes_temp(tmp_path, monkeypatch):
+    pytest.importorskip("scipy")
+    from ark.core.multimodal_nodes import AudioPlayer
+    # Redirect ~/.ark to tmp
+    monkeypatch.setenv("HOME", str(tmp_path))
+    ap = AudioPlayer(sample_rate=8000)
+    ap._ark_node_id = "test123"
+    wave = torch.sin(torch.arange(8000).float() / 8000 * 2 * 3.14159 * 440)
+    ap(wave.unsqueeze(0))
+    assert ap.last_audio_path is not None
+    assert not ap.last_audio_path.startswith("err:")
+    from pathlib import Path
+    assert Path(ap.last_audio_path).exists()
+    assert Path(ap.last_audio_path).name == "test123.wav"
+
+
+def test_template_text2audio_has_player():
+    from ark.core.templates import template_text2audio_tiny
+    t = template_text2audio_tiny()
+    types = [n["type"] for n in t["nodes"]]
+    assert "audio_player" in types
 
 
 # ============================================================
