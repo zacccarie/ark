@@ -630,6 +630,18 @@ def _register_datasets():
 _register_datasets()
 
 
+# TinyLLM (Phase 54)
+def _register_tiny_llm():
+    try:
+        from ark.core.tiny_llm_node import register_tiny_llm_handlers
+        register_tiny_llm_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] tiny_llm handlers failed: {e}", file=sys.stderr)
+
+_register_tiny_llm()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES

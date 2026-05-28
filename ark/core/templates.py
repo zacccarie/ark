@@ -12,6 +12,7 @@ TEMPLATES_LIST = [
     ("diffusion_basic", "Diffusion basic (loader+CLIP+empty_latent+KSampler+VAE+save)"),
     ("text2image_sd", "Text2Image SD (real_backend=True, OFA small SD ~400MB)"),
     ("img2img_sd", "Img2Img SD (load image + VAE encode + prompt + KSampler)"),
+    ("tiny_llm_demo", "TinyLLM (corpus → train → generate, 100k params char-level)"),
     ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
     ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
 ]
@@ -228,6 +229,29 @@ def template_img2img_sd() -> dict:
                   tags=["template", "diffusion", "img2img", "stable-diffusion"])
 
 
+def template_tiny_llm_demo() -> dict:
+    """Phase 54 : TinyLLM corpus → train → generate."""
+    corpus = _node("tiny_llm_corpus", 0, 200,
+                     {"n_sentences": 2000, "seed": 42})
+    model = _node("tiny_llm_model", 300, 200,
+                    {"d_model": 64, "n_blocks": 2, "n_heads": 4,
+                     "ffn_dim": 256, "max_len": 128,
+                     "train_steps": 800, "lr": 3e-3,
+                     "batch_size": 32, "block_size": 64,
+                     "save_name": "tiny_llm_demo"})
+    gen = _node("tiny_llm_generate", 600, 200,
+                  {"load_name": "tiny_llm_demo",
+                   "prompt": "the cat ",
+                   "max_new": 100, "temperature": 0.8, "top_k": 10})
+    conns = [
+        _conn(corpus, model),
+        _conn(model, gen),
+    ]
+    return _wrap("TinyLLM Demo",
+                  [corpus, model, gen], conns,
+                  tags=["template", "llm", "transformer", "tiny"])
+
+
 def template_metamorph_m1() -> dict:
     """Metamorph M1 CriticalGrowNet : MLP mutable avec criticality target β=-2."""
     inp = _node("image_input", 0, 200, {"shape": "[1, 28, 28]"})
@@ -271,6 +295,7 @@ _BUILDERS = {
     "diffusion_basic": template_diffusion_basic,
     "text2image_sd": template_text2image_sd,
     "img2img_sd": template_img2img_sd,
+    "tiny_llm_demo": template_tiny_llm_demo,
     "metamorph_m1": template_metamorph_m1,
     "metamorph_m5": template_metamorph_m5,
 }

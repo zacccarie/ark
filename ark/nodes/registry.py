@@ -597,6 +597,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] dataset specs failed: {e}", file=sys.stderr)
 
+    # TinyLLM (Phase 54)
+    try:
+        from ark.core.tiny_llm_node import register_tiny_llm_specs
+        register_tiny_llm_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] tiny_llm specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups
