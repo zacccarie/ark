@@ -42,6 +42,11 @@ class NodeSpec:
     has_thumbnail: bool = False
     is_multi_input: bool = False  # si True, chaque connexion ajoute un connecteur
     param_help: dict = field(default_factory=dict)  # name → tooltip explication
+    short: str = ""  # 1-line summary (above description)
+    equation: str = ""  # formula (LaTeX-ish string)
+    related: tuple = ()  # noms de concepts liés
+    role: str = ""  # ce que fait le node (visible Inspector)
+    function: str = ""  # comment il fonctionne en interne (visible Inspector)
 
 
 class NodeRegistry:

@@ -36,6 +36,53 @@ class InspectorPanel(QWidget):
         sep.setStyleSheet(f"color: {T.BORDER_DEFAULT};")
         v.addWidget(sep)
 
+        # Bloc explicatif (rôle + fonction + équation + related) — Phase 30
+        self._info_host = QWidget(self)
+        self._info_layout = QVBoxLayout(self._info_host)
+        self._info_layout.setContentsMargins(0, 0, 0, T.S_2)
+        self._info_layout.setSpacing(T.S_2)
+
+        self.role_label = QLabel("", self._info_host)
+        self.role_label.setWordWrap(True)
+        self.role_label.setStyleSheet(
+            f"font-size: {T.FS_BODY}px; color: {T.FG_PRIMARY}; "
+            "font-weight: 600; line-height: 1.4;"
+        )
+        self._info_layout.addWidget(self.role_label)
+
+        self.function_label = QLabel("", self._info_host)
+        self.function_label.setWordWrap(True)
+        self.function_label.setStyleSheet(
+            f"font-size: {T.FS_LABEL}px; color: {T.FG_SECONDARY}; line-height: 1.5;"
+        )
+        self._info_layout.addWidget(self.function_label)
+
+        self.equation_label = QLabel("", self._info_host)
+        self.equation_label.setWordWrap(True)
+        self.equation_label.setStyleSheet(
+            f"font-family: 'Menlo','Courier New',monospace; "
+            f"font-size: {T.FS_LABEL}px; color: {T.ACCENT}; "
+            f"background-color: rgba(225,29,42,0.08); "
+            f"padding: {T.S_2}px {T.S_3}px; border-left: 2px solid {T.ACCENT};"
+        )
+        self._info_layout.addWidget(self.equation_label)
+
+        self.related_label = QLabel("", self._info_host)
+        self.related_label.setWordWrap(True)
+        self.related_label.setStyleSheet(
+            f"font-size: {T.FS_MICRO}px; color: {T.FG_TERTIARY}; "
+            "text-transform: uppercase; letter-spacing: 1px;"
+        )
+        self._info_layout.addWidget(self.related_label)
+
+        self._info_sep = QFrame()
+        self._info_sep.setFrameShape(QFrame.Shape.HLine)
+        self._info_sep.setStyleSheet(f"color: {T.BORDER_DEFAULT};")
+        self._info_layout.addWidget(self._info_sep)
+
+        v.addWidget(self._info_host)
+        self._info_host.hide()
+
         # Chart placeholder (visible seulement pour nodes observer)
         self._chart_host = QWidget(self)
         from PySide6.QtWidgets import QVBoxLayout as _VBL
@@ -59,10 +106,13 @@ class InspectorPanel(QWidget):
         if node is None:
             self.title.setText("Aucune sélection")
             self.subtitle.setText("")
+            self._info_host.hide()
             self._chart_host.hide()
             return
         self.title.setText(node.spec.title)
         self.subtitle.setText(f"{node.spec.category}   ·   id {node.id[:14]}")
+        # Bloc explicatif (Phase 30)
+        self._populate_info_block(node.spec)
         # Chart pour observer / vg_block
         if node.spec.name == "observer":
             self._metric_chart = MetricChart(self._chart_host, width=260, height=140)
@@ -90,6 +140,54 @@ class InspectorPanel(QWidget):
                 if help_txt:
                     label.setToolTip(help_txt)
                 self._form.addRow(label, w)
+
+    def _populate_info_block(self, spec):
+        """Phase 30 — remplit bloc explicatif depuis NodeSpec."""
+        # Rôle : short si dispo, sinon 1ère ligne description
+        role = getattr(spec, "role", "") or getattr(spec, "short", "")
+        if not role and spec.description:
+            role = spec.description.split(".")[0].strip() + "."
+        # Function : long detail
+        function = getattr(spec, "function", "") or spec.description
+        # Equation + related
+        equation = getattr(spec, "equation", "") or ""
+        related = getattr(spec, "related", ()) or ()
+
+        any_shown = False
+        if role:
+            self.role_label.setText(role)
+            self.role_label.show()
+            any_shown = True
+        else:
+            self.role_label.hide()
+
+        if function and function != role:
+            self.function_label.setText(function)
+            self.function_label.show()
+            any_shown = True
+        else:
+            self.function_label.hide()
+
+        if equation:
+            self.equation_label.setText(f"  {equation}")
+            self.equation_label.show()
+            any_shown = True
+        else:
+            self.equation_label.hide()
+
+        if related:
+            self.related_label.setText(
+                "Voir aussi : " + " · ".join(str(r) for r in related[:6]))
+            self.related_label.show()
+            any_shown = True
+        else:
+            self.related_label.hide()
+
+        if any_shown:
+            self._info_host.show()
+            self._info_sep.show()
+        else:
+            self._info_host.hide()
 
     def push_live_metrics(self, node_id: str, metrics: dict):
         """Push depuis trainer.observations vers chart si node sélectionné."""

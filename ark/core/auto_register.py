@@ -488,6 +488,14 @@ def register_glossary_specs(registry) -> int:
         inputs = [SocketSpec("in", "tensor")]
         outputs = [SocketSpec("out", "tensor")]
 
+        # Role = fonction principale (court), Function = détail interne
+        short = c.get("short", "")
+        long_ = c.get("long", short)
+        role = short or c["title"]
+        function = long_ if long_ != short else short
+        equation = c.get("equation", "") or ""
+        related = c.get("related", ()) or ()
+
         spec = NodeSpec(
             name=c["name"],
             title=c["title"],
@@ -495,7 +503,12 @@ def register_glossary_specs(registry) -> int:
             inputs=inputs,
             outputs=outputs,
             params=_to_param_spec(c.get("params", [])),
-            description=c.get("long", c.get("short", "")),
+            description=long_,
+            short=short,
+            equation=equation,
+            related=tuple(related),
+            role=role,
+            function=function,
         )
         try:
             registry.register(spec)
