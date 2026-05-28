@@ -439,8 +439,12 @@ class MainWindow(QMainWindow):
         self.view = view
         self.undo_stack = undo
         self.scene.selectionChanged.connect(self._on_scene_selection_changed)
-        # Sync undo actions menubar (les actions sont créées sur un stack
-        # spécifique ; pour simplifier on reconstruit le edit menu undo si besoin)
+        # Phase 50 fix : refresh minimap scene/view refs (était stale → crash)
+        if hasattr(self, "_minimap"):
+            try:
+                self._minimap.set_scene_view(scene, view)
+            except Exception:
+                pass
         self.statusBar().showMessage(f"Projet actif : {self.tabs.tabText(self.tabs.currentIndex())}", 1500)
 
     # ------------------------------------------------------------

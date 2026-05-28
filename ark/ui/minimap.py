@@ -44,13 +44,22 @@ class Minimap(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(8, 8, -8, -8)
 
-        if self._scene is None or not list(self._scene.nodes()):
+        # Phase 50 fix : guard contre scene supprimée Qt (RuntimeError C++)
+        try:
+            if self._scene is None:
+                raise RuntimeError("no scene")
+            nodes = list(self._scene.nodes())
+        except (RuntimeError, AttributeError):
             p.setPen(QPen(QColor(T.FG_TERTIARY)))
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Scene vide")
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "—")
+            p.end()
             return
 
-        # Calculate scene bounding box from nodes
-        nodes = list(self._scene.nodes())
+        if not nodes:
+            p.setPen(QPen(QColor(T.FG_TERTIARY)))
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Scene vide")
+            p.end()
+            return
         min_x = min(n.pos().x() for n in nodes)
         max_x = max(n.pos().x() + n.width for n in nodes)
         min_y = min(n.pos().y() for n in nodes)
@@ -84,21 +93,24 @@ class Minimap(QWidget):
             p.drawRoundedRect(int(nx), int(ny), int(nw), int(nh), 2, 2)
 
         # Draw connections (lines minces)
-        p.setPen(QPen(QColor(T.BORDER_DEFAULT), 1))
-        for c in self._scene.connections():
-            if c.start_socket is None or c.end_socket is None:
-                continue
-            sn = c.start_socket.parent_node
-            en = c.end_socket.parent_node
-            sx_ = off_x + (sn.pos().x() + sn.width - min_x) * scale
-            sy_ = off_y + (sn.pos().y() + sn.height / 2 - min_y) * scale
-            ex_ = off_x + (en.pos().x() - min_x) * scale
-            ey_ = off_y + (en.pos().y() + en.height / 2 - min_y) * scale
-            p.drawLine(int(sx_), int(sy_), int(ex_), int(ey_))
+        try:
+            p.setPen(QPen(QColor(T.BORDER_DEFAULT), 1))
+            for c in self._scene.connections():
+                if c.start_socket is None or c.end_socket is None:
+                    continue
+                sn = c.start_socket.parent_node
+                en = c.end_socket.parent_node
+                sx_ = off_x + (sn.pos().x() + sn.width - min_x) * scale
+                sy_ = off_y + (sn.pos().y() + sn.height / 2 - min_y) * scale
+                ex_ = off_x + (en.pos().x() - min_x) * scale
+                ey_ = off_y + (en.pos().y() + en.height / 2 - min_y) * scale
+                p.drawLine(int(sx_), int(sy_), int(ex_), int(ey_))
+        except (RuntimeError, AttributeError):
+            pass
 
         # Draw viewport rect (red accent)
-        if self._view is not None:
-            try:
+        try:
+            if self._view is not None:
                 view_rect = self._view.mapToScene(
                     self._view.viewport().rect()).boundingRect()
                 vx = off_x + (view_rect.x() - min_x) * scale
@@ -108,8 +120,8 @@ class Minimap(QWidget):
                 p.setPen(QPen(QColor(T.PRIMARY), 1.5))
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawRect(int(vx), int(vy), int(vw), int(vh))
-            except Exception:
-                pass
+        except (RuntimeError, AttributeError):
+            pass
 
         p.end()
 
@@ -117,7 +129,10 @@ class Minimap(QWidget):
         """Click center viewport sur position cliquée."""
         if self._view is None or self._scene is None:
             return
-        nodes = list(self._scene.nodes())
+        try:
+            nodes = list(self._scene.nodes())
+        except (RuntimeError, AttributeError):
+            return
         if not nodes:
             return
         min_x = min(n.pos().x() for n in nodes)
