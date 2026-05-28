@@ -155,6 +155,11 @@ class MainWindow(QMainWindow):
         a_help.setToolTip("475+ concepts didactiques + intuition + exemples + équations.")
         a_help.triggered.connect(self._on_open_help_page)
         help_menu.addAction(a_help)
+        a_shortcuts = QAction("Raccourcis clavier (cheat-sheet)…", self)
+        a_shortcuts.setShortcut(QKeySequence("Ctrl+/"))
+        a_shortcuts.setToolTip("Vue d'ensemble des raccourcis.")
+        a_shortcuts.triggered.connect(self._on_open_shortcuts)
+        help_menu.addAction(a_shortcuts)
         a_glossary = QAction("Glossaire compact…", self)
         a_glossary.setShortcut(QKeySequence("Shift+F1"))
         a_glossary.setToolTip("Définitions courtes (ancien dialog).")
@@ -666,6 +671,17 @@ class MainWindow(QMainWindow):
             return
         self._glossary_dlg = GlossaryDialog(self, initial_term=initial_term)
         self._glossary_dlg.show()
+
+    def _on_open_shortcuts(self):
+        """Phase 40 — Ctrl+/ overlay cheat-sheet."""
+        from ark.ui.dialogs.shortcuts_overlay import ShortcutsOverlay
+        if getattr(self, "_shortcuts_dlg", None) is not None and \
+              self._shortcuts_dlg.isVisible():
+            self._shortcuts_dlg.raise_()
+            self._shortcuts_dlg.activateWindow()
+            return
+        self._shortcuts_dlg = ShortcutsOverlay(self)
+        self._shortcuts_dlg.show()
 
     def _on_open_help_page(self, initial_term: str | None = None):
         """Phase 38 : ouvre la page d'aide complète (non-modal)."""

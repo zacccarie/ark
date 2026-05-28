@@ -70,12 +70,25 @@ class NodeRegistry:
         return {k: sorted(v, key=lambda s: s.title) for k, v in sorted(out.items())}
 
 
-def default_registry() -> NodeRegistry:
+_DEFAULT_REGISTRY_CACHE: NodeRegistry | None = None
+
+
+def reset_registry_cache() -> None:
+    """Phase 40 : reset cache (utile pour tests + après reload groups/plugins)."""
+    global _DEFAULT_REGISTRY_CACHE
+    _DEFAULT_REGISTRY_CACHE = None
+
+
+def default_registry(force_rebuild: bool = False) -> NodeRegistry:
     """Registry pré-rempli avec les nodes de base ARK.
 
-    Phase 0 : un échantillon pour valider l'UI. Phase 1+ ajoute le reste
-    (CGN, transformer, attention, MoE, VG, observer, trigger, ComfyUI, etc.).
+    Phase 40 : cache module-level (singleton). Premier appel construit
+    (175ms). Suivants retournent cache (~0ms).
+    Force_rebuild=True pour rescan plugins/groups (live reload).
     """
+    global _DEFAULT_REGISTRY_CACHE
+    if _DEFAULT_REGISTRY_CACHE is not None and not force_rebuild:
+        return _DEFAULT_REGISTRY_CACHE
     r = NodeRegistry()
 
     # ---------- Input ----------
@@ -593,4 +606,7 @@ def default_registry() -> NodeRegistry:
     except Exception:
         pass
 
+    # Phase 40 : cache pour évite re-parse à chaque appel
+    _DEFAULT_REGISTRY_CACHE = r
+    globals()["_DEFAULT_REGISTRY_CACHE"] = r
     return r
