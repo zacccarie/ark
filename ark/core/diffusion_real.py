@@ -141,9 +141,13 @@ class CLIPTextEncodeReal(nn.Module):
         self.text = text
 
     def forward(self, clip):
+        # Si tuple loader (model, clip, vae) → prend clip = élément 1
+        if isinstance(clip, tuple) and len(clip) >= 2:
+            clip = clip[1]
         if hasattr(clip, "encode"):
             return clip.encode(self.text)
-        raise RuntimeError("clip input n'a pas de .encode()")
+        raise RuntimeError(
+            f"clip input n'a pas de .encode() (type={type(clip).__name__})")
 
 
 class KSamplerReal(nn.Module):
@@ -176,8 +180,12 @@ class KSamplerReal(nn.Module):
         return cls.from_config(base_scheduler.config)
 
     def forward(self, model, positive, negative, latent):
+        # Si tuple loader (model, clip, vae) → prend model = élément 0
+        if isinstance(model, tuple) and len(model) >= 1:
+            model = model[0]
         if not isinstance(model, _RealPipelineHolder):
-            raise RuntimeError("KSamplerReal demande _RealPipelineHolder en input model")
+            raise RuntimeError(
+                f"KSamplerReal demande _RealPipelineHolder (got {type(model).__name__})")
         pipe = model.pipe
         device = model.device
         dtype = pipe.unet.dtype
@@ -212,13 +220,19 @@ class KSamplerReal(nn.Module):
 
 class VAEDecodeReal(nn.Module):
     def forward(self, vae, latent):
+        # Si tuple loader → prend vae = élément 2
+        if isinstance(vae, tuple) and len(vae) >= 3:
+            vae = vae[2]
         if not hasattr(vae, "decode"):
-            raise RuntimeError("vae input n'a pas de .decode()")
+            raise RuntimeError(
+                f"vae input n'a pas de .decode() (type={type(vae).__name__})")
         return vae.decode(latent)
 
 
 class VAEEncodeReal(nn.Module):
     def forward(self, vae, image):
+        if isinstance(vae, tuple) and len(vae) >= 3:
+            vae = vae[2]
         if not hasattr(vae, "encode"):
             raise RuntimeError("vae input n'a pas de .encode()")
         return vae.encode(image)
