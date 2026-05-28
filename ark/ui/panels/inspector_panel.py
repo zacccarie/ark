@@ -57,6 +57,15 @@ class InspectorPanel(QWidget):
         )
         self._info_layout.addWidget(self.function_label)
 
+        self.sockets_label = QLabel("", self._info_host)
+        self.sockets_label.setWordWrap(False)
+        self.sockets_label.setStyleSheet(
+            f"font-family: 'Menlo','Courier New',monospace; "
+            f"font-size: {T.FS_MICRO}px; color: {T.FG_TERTIARY}; "
+            f"padding: {T.S_1}px 0; letter-spacing: 0.5px;"
+        )
+        self._info_layout.addWidget(self.sockets_label)
+
         self.equation_label = QLabel("", self._info_host)
         self.equation_label.setWordWrap(True)
         self.equation_label.setStyleSheet(
@@ -142,18 +151,51 @@ class InspectorPanel(QWidget):
                 self._form.addRow(label, w)
 
     def _populate_info_block(self, spec):
-        """Phase 30 — remplit bloc explicatif depuis NodeSpec."""
-        # Rôle : short si dispo, sinon 1ère ligne description
-        role = getattr(spec, "role", "") or getattr(spec, "short", "")
-        if not role and spec.description:
-            role = spec.description.split(".")[0].strip() + "."
-        # Function : long detail
-        function = getattr(spec, "function", "") or spec.description
-        # Equation + related
-        equation = getattr(spec, "equation", "") or ""
+        """Phase 30 — remplit bloc explicatif depuis NodeSpec.
+
+        Hiérarchie :
+        - role (bold) : short summary (1 phrase max)
+        - function (regular) : explication détaillée
+        - sockets : inputs → outputs
+        - equation : formule si présente
+        - related : concepts liés si présents
+        """
+        # Toujours clear les labels (fix persistance text Phase 30b)
+        self.role_label.clear()
+        self.function_label.clear()
+        self.equation_label.clear()
+        self.related_label.clear()
+
+        role = (getattr(spec, "role", "") or getattr(spec, "short", "")).strip()
+        function = (getattr(spec, "function", "") or "").strip()
+        description = (spec.description or "").strip()
+
+        # Fallback role : 1ère phrase de description si pas de role explicite
+        if not role and description:
+            first_sentence = description.split(".")[0].strip()
+            if len(first_sentence) < 80:
+                role = first_sentence + "."
+
+        # Fallback function : description complète si pas de function explicite
+        if not function:
+            function = description
+
+        # Évite redondance : si function commence par role (legacy nodes),
+        # garde seulement la suite après role
+        if role and function and function.startswith(role):
+            tail = function[len(role):].strip()
+            function = tail if tail else ""
+
+        equation = (getattr(spec, "equation", "") or "").strip()
         related = getattr(spec, "related", ()) or ()
 
+        # Sockets summary
+        in_types = " · ".join(s.socket_type for s in spec.inputs) or "—"
+        out_types = " · ".join(s.socket_type for s in spec.outputs) or "—"
+        sockets_text = f"IN : {in_types}    →    OUT : {out_types}"
+
         any_shown = False
+
         if role:
             self.role_label.setText(role)
             self.role_label.show()
@@ -161,12 +203,20 @@ class InspectorPanel(QWidget):
         else:
             self.role_label.hide()
 
-        if function and function != role:
+        if function:
             self.function_label.setText(function)
             self.function_label.show()
             any_shown = True
         else:
             self.function_label.hide()
+
+        # Sockets toujours affichés (sauf si node sans sockets)
+        if spec.inputs or spec.outputs:
+            self.sockets_label.setText(sockets_text)
+            self.sockets_label.show()
+            any_shown = True
+        else:
+            self.sockets_label.hide()
 
         if equation:
             self.equation_label.setText(f"  {equation}")
