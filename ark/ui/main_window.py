@@ -43,12 +43,20 @@ class MainWindow(QMainWindow):
         self.undo_stack = QUndoStack(self)
         self.undo_stack.setUndoLimit(200)
         self._current_file: str | None = None
+        # Phase 50 : setup logger central
+        try:
+            from ark.core.logger import setup_logging
+            setup_logging()
+        except Exception:
+            pass
         self._build_menus()
         self._build_status_bar()
         self._build_central()
         self._build_docks()
         # Phase 42 : overlays flottants au lieu du toolbar texte
         self._setup_floating_overlays()
+        # Phase 50 : drag-drop accept JSON
+        self.setAcceptDrops(True)
 
     # ------------------------------------------------------------
     # Menus
@@ -178,24 +186,26 @@ class MainWindow(QMainWindow):
         pass
 
     def _setup_floating_overlays(self):
-        """Phase 42 : 4 widgets overlay au-dessus du canvas central.
-        Phase 49 : ajout GlobalProgress."""
+        """Phase 42/49/50 : overlays au-dessus du canvas central."""
         from ark.ui.floating_overlays import (
             LeftRail, ActionBar, StatsOverlay, ViewControls, GlobalProgress,
         )
+        from ark.ui.minimap import Minimap
 
-        # Parent = tabs widget central
         host = self.tabs
         self._left_rail = LeftRail(host)
         self._action_bar = ActionBar(host)
         self._stats_overlay = StatsOverlay(host)
         self._view_controls = ViewControls(host)
         self._global_progress = GlobalProgress(host)
-        self._global_progress.hide()  # Hidden idle
+        self._global_progress.hide()
+        # Phase 50 : minimap bottom-right above ViewControls
+        self._minimap = Minimap(self.scene, self.view, host)
+        self._minimap.show()
 
         for w in (self._left_rail, self._action_bar,
                     self._stats_overlay, self._view_controls,
-                    self._global_progress):
+                    self._global_progress, self._minimap):
             w.raise_()
         for w in (self._left_rail, self._action_bar,
                     self._stats_overlay, self._view_controls):
@@ -279,6 +289,36 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_left_rail"):
             self._reposition_overlays()
 
+    # Phase 50 : drag-drop JSON import
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.toLocalFile().lower().endswith((".json", ".jsonl")):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        from ark.core.format import load_scene
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.lower().endswith((".json", ".jsonl")):
+                try:
+                    load_scene(self.scene, path)
+                    self._current_file = path
+                    self.statusBar().showMessage(
+                        f"✓ Chargé via drag-drop : {path}", 4000)
+                    event.acceptProposedAction()
+                    return
+                except Exception as e:
+                    self.statusBar().showMessage(
+                        f"✗ Erreur import : {e}", 5000)
+        event.ignore()
+
     def _reposition_overlays(self):
         if not hasattr(self, "_left_rail"):
             return
@@ -324,6 +364,15 @@ class MainWindow(QMainWindow):
         vc.setGeometry(host_rect.width() - vc_w - margin,
                           host_rect.height() - vc_h - margin,
                           vc_w, vc_h)
+
+        # Phase 50 : Minimap au-dessus ViewControls
+        if hasattr(self, "_minimap"):
+            mm_w = self._minimap.width()
+            mm_h = self._minimap.height()
+            self._minimap.setGeometry(
+                host_rect.width() - mm_w - margin,
+                host_rect.height() - vc_h - margin - mm_h - 8,
+                mm_w, mm_h)
 
     # ------------------------------------------------------------
     # Status bar
@@ -374,6 +423,11 @@ class MainWindow(QMainWindow):
         if u is not None:
             self.undo_stack = u
         self.setCentralWidget(self.tabs)
+
+    def _on_active_project_changed_refresh_minimap(self):
+        """Phase 50 : update minimap scene/view ref après tab switch."""
+        if hasattr(self, "_minimap"):
+            self._minimap.set_scene_view(self.scene, self.view)
 
     def _on_active_project_changed(self, scene, view, undo):
         # Disconnect ancienne scène
@@ -693,6 +747,13 @@ class MainWindow(QMainWindow):
                 self.terminal.append_log(f"[mutate ep{epoch} fail] {a['error']}")
 
     def _on_batch(self, info: dict):
+        # Phase 50 : route metrics vers Dashboard si ouvert
+        if getattr(self, "_bench_dlg", None) is not None and \
+              self._bench_dlg.isVisible():
+            try:
+                self._bench_dlg.push_train_metrics(info)
+            except Exception:
+                pass
         # Phase 49 : update global progress
         if hasattr(self, "_global_progress"):
             ep = info.get("epoch", 1)

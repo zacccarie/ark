@@ -11,6 +11,7 @@ TEMPLATES_LIST = [
     ("vg_mutable", "VG mutable + observer + trigger_rule (vagues B+C)"),
     ("diffusion_basic", "Diffusion basic (loader+CLIP+empty_latent+KSampler+VAE+save)"),
     ("text2image_sd", "Text2Image SD (real_backend=True, OFA small SD ~400MB)"),
+    ("img2img_sd", "Img2Img SD (load image + VAE encode + prompt + KSampler)"),
     ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
     ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
 ]
@@ -188,6 +189,45 @@ def template_text2image_sd() -> dict:
                           "real_backend"])
 
 
+def template_img2img_sd() -> dict:
+    """Phase 50 : img2img pipeline. load_image → VAE encode → KSampler avec denoise<1."""
+    loader = _node("diffusion_model_loader", 0, 250,
+                     {"checkpoint": "OFA-Sys/small-stable-diffusion-v0",
+                      "device": "auto", "real_backend": True})
+    src_img = _node("load_image", 0, 50,
+                     {"path": "input.png"})
+    vae_enc = _node("vae_encode", 280, 50, {"real_backend": True})
+    pos = _node("clip_text_encode", 320, 200,
+                  {"text": "stylized version, vivid colors, illustration",
+                   "real_backend": True})
+    neg = _node("clip_text_encode", 320, 380,
+                  {"text": "blurry, low quality", "real_backend": True})
+    sampler = _node("k_sampler", 640, 200,
+                       {"seed": 42, "steps": 20, "cfg": 7.0,
+                        "sampler": "euler", "scheduler": "normal",
+                        "denoise": 0.55,
+                        "real_backend": True})
+    vae_dec = _node("vae_decode", 960, 200, {"real_backend": True})
+    save = _node("save_image", 1280, 200,
+                   {"prefix": "ark_i2i_", "dir": "./output"})
+    conns = [
+        _conn(loader, vae_enc, fs=2, ts=0),  # vae
+        _conn(src_img, vae_enc, fs=0, ts=1), # image
+        _conn(loader, sampler, fs=0, ts=0),  # model
+        _conn(loader, pos, fs=1, ts=0),       # clip → pos
+        _conn(loader, neg, fs=1, ts=0),       # clip → neg
+        _conn(loader, vae_dec, fs=2, ts=0),   # vae
+        _conn(pos, sampler, fs=0, ts=1),
+        _conn(neg, sampler, fs=0, ts=2),
+        _conn(vae_enc, sampler, fs=0, ts=3),  # latent from encode
+        _conn(sampler, vae_dec, fs=0, ts=1),
+        _conn(vae_dec, save),
+    ]
+    return _wrap("Img2Img SD",
+                  [loader, src_img, vae_enc, pos, neg, sampler, vae_dec, save], conns,
+                  tags=["template", "diffusion", "img2img", "stable-diffusion"])
+
+
 def template_metamorph_m1() -> dict:
     """Metamorph M1 CriticalGrowNet : MLP mutable avec criticality target β=-2."""
     inp = _node("image_input", 0, 200, {"shape": "[1, 28, 28]"})
@@ -230,6 +270,7 @@ _BUILDERS = {
     "vg_mutable": template_vg_mutable,
     "diffusion_basic": template_diffusion_basic,
     "text2image_sd": template_text2image_sd,
+    "img2img_sd": template_img2img_sd,
     "metamorph_m1": template_metamorph_m1,
     "metamorph_m5": template_metamorph_m5,
 }

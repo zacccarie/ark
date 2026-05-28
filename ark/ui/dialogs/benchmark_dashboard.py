@@ -186,6 +186,16 @@ class BenchmarkDashboard(QDialog):
     def _log(self, msg: str):
         self.log.appendPlainText(msg)
 
+    def push_train_metrics(self, info: dict):
+        """Phase 50 : appelé live par MainWindow._on_batch."""
+        ep = info.get("epoch", 0)
+        batch = info.get("batch", 0)
+        total = info.get("total_batches", 0)
+        loss = info.get("loss", 0.0)
+        acc = info.get("acc", 0.0)
+        self._log(f"[train] ep {ep} batch {batch}/{total} "
+                     f"loss={loss:.4f} acc={acc*100:.1f}%")
+
     def _set_state(self, state: str):
         roles = {
             "idle": "badge",
