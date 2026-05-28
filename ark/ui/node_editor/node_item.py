@@ -185,7 +185,6 @@ class NodeItem(QGraphicsItem):
             # Border accent vert plus marqué (success visible)
             painter.setPen(QPen(QColor(T.STATE_OK), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            from PySide6.QtGui import QPainterPath
             ok_path = QPainterPath()
             ok_path.addRoundedRect(QRectF(0, 0, self.width, self.height),
                                          T.R_MEDIUM, T.R_MEDIUM)
