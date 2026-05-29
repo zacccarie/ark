@@ -93,6 +93,7 @@ class ArkBridge(QObject):
                     "options": list(p.options) if p.options else [],
                     "min": p.min,
                     "max": p.max,
+                    "file_filter": getattr(p, "file_filter", ""),
                 }
                 for p in spec.params
             ],
@@ -142,6 +143,23 @@ class ArkBridge(QObject):
             self._mw.scene._raw_create_node(node_type, float(x), float(y))
         except Exception as e:
             self.emit_log(f"[spawn_node error] {e}")
+
+    @Slot(str, str, str, result=str)
+    def pick_file(self, node_id: str, param: str, file_filter: str):
+        """Phase 76 : ouvre QFileDialog, set le param, retourne le chemin."""
+        from PySide6.QtWidgets import QFileDialog
+        flt = file_filter or "Tous fichiers (*)"
+        path, _ = QFileDialog.getOpenFileName(self._mw, "Choisir un fichier",
+                                                  "", flt)
+        if not path:
+            return ""
+        # Applique au node
+        if self._mw is not None and hasattr(self._mw, "scene"):
+            for it in self._mw.scene.items():
+                if getattr(it, "id", None) == node_id and hasattr(it, "set_param"):
+                    it.set_param(param, path)
+                    break
+        return path
 
     @Slot(str, str, "QVariant")
     def set_node_param(self, node_id: str, name: str, value: Any):

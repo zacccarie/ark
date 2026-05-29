@@ -148,6 +148,13 @@ export function InspectorPanel() {
                   spec={p}
                   value={node.values[p.name] ?? p.default}
                   onChange={(v) => setParam(p.name, v)}
+                  onPick={async () => {
+                    if (!bridge) return;
+                    const path = await bridge.pick_file?.(
+                      node.id, p.name, (p as any).file_filter || ""
+                    );
+                    if (path) setParam(p.name, path);
+                  }}
                 />
               ))}
             </>
@@ -167,11 +174,36 @@ function ParamRow({
   spec,
   value,
   onChange,
+  onPick,
 }: {
   spec: ParamSpec;
   value: any;
   onChange: (v: any) => void;
+  onPick?: () => void;
 }) {
+  if (spec.kind === "filepath" || spec.kind === "dirpath") {
+    return (
+      <div>
+        <label className="text-xs text-fg-tertiary block mb-1">{spec.name}</label>
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={value ?? ""}
+            placeholder="aucun fichier"
+            onChange={(e) => onChange(e.target.value)}
+            className="ark-input flex-1 font-mono text-[10px]"
+          />
+          <button
+            onClick={onPick}
+            className="ark-btn-primary px-2 py-1 text-xs whitespace-nowrap"
+            title="Charger un fichier depuis l'ordinateur"
+          >
+            Charger…
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (spec.kind === "bool") {
     return (
       <label className="flex items-center justify-between gap-3 cursor-pointer">

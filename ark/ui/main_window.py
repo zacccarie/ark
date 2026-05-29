@@ -324,12 +324,31 @@ class MainWindow(QMainWindow):
             self._reposition_overlays()
 
     # Phase 50 : drag-drop JSON import
+    # Phase 76 : extension → (node_type, param_name) pour drag-drop fichiers
+    _DROP_MAP = {
+        (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff"):
+            ("load_image_file", "path"),
+        (".mp4", ".mov", ".avi", ".mkv", ".webm"):
+            ("load_video", "path"),
+        (".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"):
+            ("load_sound", "path"),
+        (".csv", ".tsv"): ("load_csv", "path"),
+        (".txt", ".md"): ("text_input", None),  # contenu → prompt
+        (".gltf", ".glb"): ("load_gltf", "path"),
+    }
+
+    def _drop_node_for(self, path: str):
+        """Retourne (node_type, param_name) pour un fichier, ou None."""
+        low = path.lower()
+        for exts, target in self._DROP_MAP.items():
+            if low.endswith(exts):
+                return target
+        return None
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                if url.toLocalFile().lower().endswith((".json", ".jsonl")):
-                    event.acceptProposedAction()
-                    return
+            event.acceptProposedAction()
+            return
         event.ignore()
 
     def dragMoveEvent(self, event):
@@ -338,20 +357,79 @@ class MainWindow(QMainWindow):
 
     def dropEvent(self, event):
         from ark.core.format import load_scene
-        for url in event.mimeData().urls():
+        urls = event.mimeData().urls()
+        spawned = 0
+        # Position de drop → coords scène
+        try:
+            vp_pos = self.view.mapFromGlobal(event.position().toPoint()
+                                                 if hasattr(event, "position")
+                                                 else self.cursor().pos())
+            base = self.view.mapToScene(vp_pos)
+            bx, by = base.x(), base.y()
+        except Exception:
+            bx, by = 0.0, 200.0
+        for url in urls:
             path = url.toLocalFile()
-            if path.lower().endswith((".json", ".jsonl")):
+            low = path.lower()
+            # 1. Archi JSON ARK → charge la scène
+            if low.endswith((".jsonl",)) or (low.endswith(".json")
+                                                and self._is_ark_json(path)):
                 try:
                     load_scene(self.scene, path)
                     self._current_file = path
                     self.statusBar().showMessage(
-                        f"✓ Chargé via drag-drop : {path}", 4000)
+                        f"✓ Architecture chargée : {path}", 4000)
                     event.acceptProposedAction()
                     return
-                except Exception as e:
-                    self.statusBar().showMessage(
-                        f"✗ Erreur import : {e}", 5000)
-        event.ignore()
+                except Exception:
+                    pass
+            # 2. .json data → load_json node
+            if low.endswith(".json"):
+                self._spawn_loader_node("load_json", "path", path,
+                                            bx + spawned * 40, by + spawned * 40)
+                spawned += 1
+                continue
+            # 3. Média → node loader correspondant
+            target = self._drop_node_for(path)
+            if target:
+                ntype, pname = target
+                if ntype == "text_input":
+                    try:
+                        from pathlib import Path as _P
+                        content = _P(path).read_text(
+                            encoding="utf-8", errors="replace")[:5000]
+                    except Exception:
+                        content = ""
+                    self._spawn_loader_node("text_input", "prompt", content,
+                                                bx + spawned * 40, by + spawned * 40)
+                else:
+                    self._spawn_loader_node(ntype, pname, path,
+                                                bx + spawned * 40, by + spawned * 40)
+                spawned += 1
+        if spawned:
+            self.statusBar().showMessage(
+                f"✓ {spawned} fichier(s) → node(s) source", 4000)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _is_ark_json(self, path: str) -> bool:
+        try:
+            import json as _j
+            with open(path, "r") as f:
+                head = f.read(400)
+            return "ark-arch" in head or '"nodes"' in head
+        except Exception:
+            return False
+
+    def _spawn_loader_node(self, ntype: str, pname: str, value,
+                           x: float, y: float):
+        try:
+            node = self.scene.create_node(ntype, x=float(x), y=float(y))
+            if node is not None and pname and hasattr(node, "set_param"):
+                node.set_param(pname, value)
+        except Exception as e:
+            self.statusBar().showMessage(f"✗ drop {ntype}: {e}", 4000)
 
     def _reposition_overlays(self):
         if not hasattr(self, "_left_rail"):
