@@ -2,7 +2,10 @@
 from __future__ import annotations
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QBrush, QPen, QColor, QFont, QPainterPath, QCursor
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsTextItem
+from PySide6.QtWidgets import (
+    QGraphicsItem, QGraphicsTextItem, QGraphicsProxyWidget,
+    QWidget, QHBoxLayout, QPushButton, QFileDialog,
+)
 
 from ark.ui import design_tokens as T
 from ark.ui.node_editor.socket_item import SocketItem
@@ -66,6 +69,16 @@ class NodeItem(QGraphicsItem):
         self._resize_start_h_extra = 0
         self._resize_start_pos = QPointF()
 
+        # Phase 56f : embed audio player buttons IN node for audio_player type
+        self._audio_proxy: QGraphicsProxyWidget | None = None
+        self._audio_play_btn = None
+        self._audio_dl_btn = None
+        self._audio_proc = None
+        self._audio_is_playing = False
+        self._audio_poll_timer = None
+        if spec.name == "audio_player":
+            self._setup_audio_player_widget()
+
     # ------------------------------------------------------------
     # Size / layout
     # ------------------------------------------------------------
@@ -77,7 +90,10 @@ class NodeItem(QGraphicsItem):
         param_h = len(self.spec.params) * self.PARAM_H
         thumb_h = 58 if self.spec.has_thumbnail else 0
         err_h = 16 if self.error else 0
-        return self.HEADER_H + socket_h + param_h + thumb_h + err_h + self.PADDING_BOTTOM
+        # Phase 56f : audio_player has embedded ▶/⬇ widget (32px)
+        audio_h = 36 if self.spec.name == "audio_player" else 0
+        return (self.HEADER_H + socket_h + param_h + thumb_h + err_h
+                + audio_h + self.PADDING_BOTTOM)
 
     @property
     def height(self) -> int:
@@ -470,6 +486,134 @@ class NodeItem(QGraphicsItem):
             self.update()
         except Exception:
             self._preview_qimage = None
+
+    # ------------------------------------------------------------
+    # Phase 56f : embedded audio player widget (in-node ▶ + ⬇)
+    # ------------------------------------------------------------
+    def _setup_audio_player_widget(self):
+        """Embed Play + Download buttons directly in the node body."""
+        try:
+            host = QWidget()
+            host.setStyleSheet("background: transparent;")
+            lay = QHBoxLayout(host)
+            lay.setContentsMargins(6, 4, 6, 4)
+            lay.setSpacing(6)
+            self._audio_play_btn = QPushButton("▶ Play")
+            self._audio_play_btn.setStyleSheet(
+                f"background-color: {T.SUCCESS}; color: #0A0A0A; "
+                f"border: none; border-radius: 6px; padding: 4px 10px; "
+                f"font-weight: 700; font-size: 11px;")
+            self._audio_play_btn.clicked.connect(self._on_node_audio_play)
+            lay.addWidget(self._audio_play_btn)
+            self._audio_dl_btn = QPushButton("⬇")
+            self._audio_dl_btn.setToolTip("Download .wav")
+            self._audio_dl_btn.setStyleSheet(
+                f"background-color: {T.BG_PANEL_RAISED}; color: {T.FG_PRIMARY}; "
+                f"border: 1px solid {T.BORDER_DEFAULT}; "
+                f"border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+            self._audio_dl_btn.clicked.connect(self._on_node_audio_download)
+            lay.addWidget(self._audio_dl_btn)
+            lay.addStretch(1)
+            host.setFixedWidth(self.width - 12)
+            host.setFixedHeight(32)
+            self._audio_proxy = QGraphicsProxyWidget(self)
+            self._audio_proxy.setWidget(host)
+            # Position : sous header + sockets
+            self._reposition_audio_proxy()
+        except Exception:
+            self._audio_proxy = None
+
+    def _reposition_audio_proxy(self):
+        if self._audio_proxy is None:
+            return
+        n_sockets = max(len(self.input_sockets), len(self.output_sockets))
+        socket_h = max(n_sockets, 1) * self.ROW_H
+        y = self.HEADER_H + socket_h + 4
+        self._audio_proxy.setPos(6, y)
+
+    def _resolve_audio_path(self) -> str | None:
+        """Find audio file: disk cache <id>.wav or most recent in cache dir."""
+        from pathlib import Path
+        cache_dir = Path.home() / ".ark" / "audio_player"
+        # Match this node
+        candidate = cache_dir / f"{self.id}.wav"
+        if candidate.exists():
+            return str(candidate)
+        # Recent fallback
+        if cache_dir.exists():
+            wavs = sorted(cache_dir.glob("*.wav"),
+                              key=lambda p: p.stat().st_mtime, reverse=True)
+            if wavs:
+                return str(wavs[0])
+        return None
+
+    def _on_node_audio_play(self):
+        from pathlib import Path
+        import subprocess, platform
+        if self._audio_is_playing:
+            if self._audio_proc is not None:
+                try:
+                    self._audio_proc.terminate()
+                except Exception:
+                    pass
+                self._audio_proc = None
+            self._audio_is_playing = False
+            if self._audio_play_btn is not None:
+                self._audio_play_btn.setText("▶ Play")
+            return
+        path = self._resolve_audio_path()
+        if not path or not Path(path).exists():
+            if self._audio_play_btn is not None:
+                self._audio_play_btn.setText("no audio")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1500, lambda: self._audio_play_btn.setText("▶ Play"))
+            return
+        try:
+            sysname = platform.system()
+            if sysname == "Darwin":
+                cmd = ["afplay", path]
+            elif sysname == "Linux":
+                cmd = ["aplay", "-q", path]
+            else:
+                cmd = ["powershell", "-c",
+                          f"(New-Object Media.SoundPlayer '{path}').PlaySync();"]
+            self._audio_proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._audio_is_playing = True
+            if self._audio_play_btn is not None:
+                self._audio_play_btn.setText("⏸ Stop")
+            # Poll
+            from PySide6.QtCore import QTimer
+            self._audio_poll_timer = QTimer()
+            self._audio_poll_timer.timeout.connect(self._poll_node_audio)
+            self._audio_poll_timer.start(200)
+        except Exception:
+            pass
+
+    def _poll_node_audio(self):
+        if self._audio_proc is None or self._audio_proc.poll() is not None:
+            self._audio_proc = None
+            self._audio_is_playing = False
+            if self._audio_play_btn is not None:
+                self._audio_play_btn.setText("▶ Play")
+            if self._audio_poll_timer is not None:
+                self._audio_poll_timer.stop()
+
+    def _on_node_audio_download(self):
+        from pathlib import Path
+        path = self._resolve_audio_path()
+        if not path or not Path(path).exists():
+            return
+        try:
+            dest, _ = QFileDialog.getSaveFileName(
+                None, "Save audio as…",
+                str(Path.home() / "Downloads" / Path(path).name),
+                "Audio (*.wav);;All files (*)")
+            if dest:
+                import shutil
+                shutil.copy2(path, dest)
+        except Exception:
+            pass
 
     def _build_tooltip(self) -> str:
         """HTML tooltip riche : description + I/O + erreur."""
