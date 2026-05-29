@@ -151,20 +151,28 @@ class NodeItem(QGraphicsItem):
         painter.setPen(pen)
         painter.drawPath(path)
 
-        # Header band — Phase 41 plus haut + radius medium
+        # Phase 79 : couleur par catégorie
+        cat_hex = T.category_color(getattr(self.spec, "category", ""))
+        cat_col = QColor(cat_hex)
+        # Header band — teinté catégorie (mix sombre)
         header_rect = QRectF(0, 0, self.width, self.HEADER_H)
         header_path = QPainterPath()
         header_path.addRoundedRect(header_rect, T.R_MEDIUM, T.R_MEDIUM)
         painter.setPen(Qt.PenStyle.NoPen)
+        header_tint = QColor(cat_col)
+        header_tint.setAlpha(38)  # teinte subtile sur le raised
         painter.setBrush(QBrush(QColor(T.BG_PANEL_RAISED)))
+        painter.drawPath(header_path)
+        painter.setBrush(QBrush(header_tint))
         painter.drawPath(header_path)
         # Cut rounded bottom
         painter.fillRect(QRectF(0, self.HEADER_H - 4, self.width, 4),
                           QColor(T.BG_PANEL_RAISED))
-        # Subtle accent bar at top
-        if self.isSelected() or self.status == "ok":
-            painter.fillRect(QRectF(0, 0, self.width, 2),
-                              QColor(T.PRIMARY))
+        # Barre catégorie pleine en haut (signal fort)
+        painter.fillRect(QRectF(0, 0, self.width, 3), cat_col)
+        # Stripe verticale gauche couleur catégorie (toute hauteur)
+        painter.fillRect(QRectF(0, self.HEADER_H, 3,
+                                  self.height - self.HEADER_H), cat_col)
 
         # Title
         title_pen = QPen(QColor(T.FG_PRIMARY if not self.bypass else T.FG_DISABLED))
@@ -217,7 +225,8 @@ class NodeItem(QGraphicsItem):
         # was overlapping socket labels at top-right.
         font_micro = QFont("Arial", T.FS_MICRO)
         painter.setFont(font_micro)
-        painter.setPen(QPen(QColor(T.FG_DISABLED)))
+        painter.setPen(QPen(QColor(T.category_color(
+            getattr(self.spec, "category", "")))))
         painter.drawText(
             QRectF(8, self.height - 14, self.width - 16, 12),
             Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight,

@@ -92,6 +92,57 @@ SOCKET_ANY = "#71717A"
 
 
 # ============================================================
+# Couleurs par CATÉGORIE de node (Phase 79) — repère visuel intuitif
+# ============================================================
+# Familles : sources=vert, neural=bleu, norm=cyan, activation=ambre,
+# loss/train=orange, output/viz=rose, diffusion/gen=violet,
+# multimodal=teal, nlp/llm=indigo, groupes=or, code/math=slate.
+CATEGORY_COLOR = {
+    # Sources de données
+    "Input": "#00FF85", "Datasets": "#00E676", "Data": "#34D399",
+    "HuggingFace": "#10B981", "Devices": "#6EE7B7", "Demo": "#00FF85",
+    # Neural / transformation
+    "Neural": "#3B82F6", "Neural Networks": "#3B82F6",
+    "Sequential": "#60A5FA", "Foundations": "#2563EB",
+    # NLP / LLM / transformers
+    "NLP": "#818CF8", "Transformers": "#6366F1", "Tiny LLM": "#4F46E5",
+    # Diffusion / génératif
+    "Diffusion": "#A855F7", "Generative AI": "#9333EA",
+    "Multimodal": "#14B8A6", "Multimodal (Neural)": "#0D9488",
+    # Loss / training / optim
+    "Training": "#FB923C", "Optimization": "#F97316",
+    # Sortie / viz / interprétation
+    "Output Viewer": "#F472B6", "Viz": "#EC4899",
+    "Interpretability": "#DB2777", "Observe": "#F9A8D4",
+    # Recherche / benchmark
+    "Research": "#94A3B8", "Benchmark": "#64748B", "Math": "#475569",
+    "Code": "#334155",
+    # Systèmes / archi avancées
+    "Adaptive Architectures": "#C084FC", "Cognitive Architectures": "#A78BFA",
+    "Metamorph": "#8B5CF6", "Multi-Agent Systems": "#7C3AED",
+    "Dynamical Systems": "#22D3EE", "Dynamoscope": "#06B6D4",
+    "Evolutionary Systems": "#2DD4BF", "Graph Systems": "#67E8F9",
+    "Simulation": "#0891B2", "Biological Inspiration": "#5EEAD4",
+    "Unsupervised": "#A3E635",
+    # Groupes utilisateur
+    "User Groups": "#FBBF24",
+}
+
+
+def category_color(cat: str) -> str:
+    """Couleur hex pour une catégorie. Fallback déterministe par hash."""
+    if cat in CATEGORY_COLOR:
+        return CATEGORY_COLOR[cat]
+    import hashlib
+    h = int(hashlib.md5((cat or "x").encode()).hexdigest()[:6], 16)
+    # teinte pastel sur fond sombre
+    r = 120 + (h & 0x7F)
+    g = 120 + ((h >> 7) & 0x7F)
+    b = 120 + ((h >> 14) & 0x7F)
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+# ============================================================
 # Typographie premium
 # ============================================================
 
