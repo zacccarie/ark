@@ -137,14 +137,26 @@ export function InspectorPanel() {
         )}
 
         <div className="space-y-2 pt-2 border-t border-border-subtle">
-          {node.params.map((p) => (
-            <ParamRow
-              key={p.name}
-              spec={p}
-              value={node.values[p.name] ?? p.default}
-              onChange={(v) => setParam(p.name, v)}
-            />
-          ))}
+          {node.params.length > 0 ? (
+            <>
+              <p className="text-[10px] uppercase tracking-widest text-fg-disabled font-bold">
+                Paramètres
+              </p>
+              {node.params.map((p) => (
+                <ParamRow
+                  key={p.name}
+                  spec={p}
+                  value={node.values[p.name] ?? p.default}
+                  onChange={(v) => setParam(p.name, v)}
+                />
+              ))}
+            </>
+          ) : (
+            <p className="text-xs text-fg-disabled italic py-2">
+              Aucun paramètre configurable — node à comportement fixe.
+              Pour un réseau paramétrable, utilise « Dense » (catégorie Neural).
+            </p>
+          )}
         </div>
       </div>
     </div>
