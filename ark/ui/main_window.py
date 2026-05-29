@@ -866,22 +866,40 @@ class MainWindow(QMainWindow):
                     for nid, mod in md.items():
                         node = nodes_by_id.get(nid)
                         title = node.spec.title if node else nid[:8]
+                        # Phase 78c : pousse le résultat SUR le node (vignette)
+                        result_on_node = None
                         if hasattr(mod, "last_generated") and mod.last_generated:
                             self.terminal.append_log(
                                 f"[output] {title} → \"{mod.last_generated}\"")
+                            result_on_node = str(mod.last_generated)
                         if hasattr(mod, "last_text") and mod.last_text:
                             preview = mod.last_text[:200].replace("\n", " ")
                             self.terminal.append_log(
                                 f"[output] {title} → \"{preview}\"")
+                            result_on_node = mod.last_text
                         if hasattr(mod, "last_value") and mod.last_value not in ("", None):
                             self.terminal.append_log(
                                 f"[output] {title} = {mod.last_value}")
+                            if result_on_node is None:
+                                result_on_node = str(mod.last_value)
                         if hasattr(mod, "last_predictions") and mod.last_predictions:
                             top = ", ".join(
                                 f"{p['label']}({p['prob']:.3f})"
                                 for p in mod.last_predictions[:5])
                             self.terminal.append_log(
                                 f"[output] {title} top-K: {top}")
+                            if result_on_node is None:
+                                p0 = mod.last_predictions[0]
+                                result_on_node = (
+                                    f"→ {p0['label']} ({p0['prob']*100:.0f}%)")
+                        # Affiche sur le node si pas d'image preview
+                        if (node is not None and result_on_node
+                                and getattr(node, "_preview_qimage", None) is None):
+                            try:
+                                node._preview_text = result_on_node[:200]
+                                node.update()
+                            except Exception:
+                                pass
                         if hasattr(mod, "last_path") and mod.last_path:
                             self.terminal.append_log(
                                 f"[output] {title} → {mod.last_path}")
