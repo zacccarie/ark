@@ -25,6 +25,9 @@ TEMPLATES_LIST = [
      "Text2Audio MusicGen ★ NEURAL (~1.5GB download, ~30s gen)"),
     ("text2video_diffusion",
      "Text2Video Diffusion ★ NEURAL (~4GB download, ~2min gen)"),
+    # Phase 60 — from-scratch diffusion (briques ARK)
+    ("tiny_diffusion_mnist",
+     "Tiny Diffusion MNIST ★ FROM-SCRATCH (DDPM + cross-attn UNet + DDIM)"),
 ]
 
 
@@ -419,6 +422,54 @@ def template_text2video_diffusion() -> dict:
                   tags=["template", "video", "neural", "diffusion"])
 
 
+def template_tiny_diffusion_mnist() -> dict:
+    """Phase 60 : class-conditional DDPM from scratch sur MNIST.
+
+    Chain training:
+    torchvision_dataset (MNIST) → x_0 → diffusion_scheduler (forward)
+                                  ↘ ground truth class → class_embedding
+                                                       → unet_mini → ε_pred
+    MSE(ε_pred, scheduler.noise) → adam
+
+    Phase d'inférence : ddim_sampler(class_embed) → image generated.
+
+    Démo ARK : pipeline complet diffusion construit depuis briques basiques.
+    Train ~5min CPU pour résultats reconnaissables.
+    """
+    ds = _node("torchvision_dataset", 0, 200,
+                 {"dataset": "MNIST", "train": True,
+                  "batch_size": 64, "image_size": 28})
+    sch = _node("diffusion_scheduler", 280, 200,
+                  {"num_timesteps": 200, "beta_start": 1e-4,
+                   "beta_end": 0.02, "mode": "forward"})
+    ce = _node("class_embedding", 280, 380,
+                 {"num_classes": 10, "dim": 128})
+    unet = _node("unet_mini", 560, 280,
+                   {"in_ch": 1, "base_ch": 32, "cond_dim": 128,
+                    "use_attn": True})
+    loss = _node("mse_loss", 840, 280, {})
+    opt = _node("adam", 1080, 280, {"lr": 2e-4})
+    # Inference branch (parallel)
+    samp = _node("ddim_sampler", 560, 500,
+                   {"n_steps": 50, "channels": 1, "height": 28,
+                    "width": 28, "batch_size": 8})
+    iv = _node("image_viewer", 840, 500, {"title": "Generated Digits"})
+    conns = [
+        _conn(ds, sch),
+        _conn(sch, unet, fs=0, ts=0),       # x_t → unet
+        _conn(ce, unet, fs=0, ts=1),        # cond → unet
+        _conn(unet, loss),
+        _conn(loss, opt),
+        _conn(ce, samp),                     # cond → sampler
+        _conn(samp, iv),
+    ]
+    return _wrap("Tiny Diffusion MNIST (from scratch)",
+                  [ds, sch, ce, unet, loss, opt, samp, iv], conns,
+                  num_classes=10,
+                  tags=["template", "diffusion", "from-scratch", "mnist",
+                        "ddpm"])
+
+
 def template_img2img_style() -> dict:
     """Phase 56 : load_image → conv2d transform pipeline → save_image.
 
@@ -467,6 +518,8 @@ _BUILDERS = {
     # Phase 59 — REAL neural
     "text2audio_musicgen": template_text2audio_musicgen,
     "text2video_diffusion": template_text2video_diffusion,
+    # Phase 60 — from-scratch diffusion
+    "tiny_diffusion_mnist": template_tiny_diffusion_mnist,
 }
 
 

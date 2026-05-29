@@ -638,6 +638,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] multimodal neural specs failed: {e}", file=sys.stderr)
 
+    # Diffusion primitives (Phase 60) — timestep, scheduler, cross-attn, UNet, DDIM
+    try:
+        from ark.core.diffusion_nodes import register_diffusion_specs
+        register_diffusion_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] diffusion specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

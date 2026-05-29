@@ -695,6 +695,18 @@ def _register_multimodal_neural():
 _register_multimodal_neural()
 
 
+# Diffusion primitives (Phase 60)
+def _register_diffusion():
+    try:
+        from ark.core.diffusion_nodes import register_diffusion_handlers
+        register_diffusion_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] diffusion handlers failed: {e}", file=sys.stderr)
+
+_register_diffusion()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
@@ -893,6 +905,8 @@ def compile_scene(scene, num_classes: int | None = None,
         "text_to_frame_seq", "text_to_melody",
         # Phase 59 : neural multimodal sources
         "musicgen_audio", "bark_audio", "text2video_diffusion",
+        # Phase 60 : diffusion samplers (no incoming required)
+        "ddim_sampler",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES
