@@ -97,14 +97,43 @@ class MnistRecognizer(nn.Module):
     Sinon : charge le checkpoint. Sortie = logits (1,10).
     """
 
-    def __init__(self, auto_train: bool = True, epochs: int = 3):
+    def __init__(self, auto_train: bool = True, epochs: int = 3,
+                 invert: str = "auto"):
         super().__init__()
         self.auto_train = auto_train
         self.epochs = epochs
+        self.invert = invert  # "auto" | "yes" | "no"
         self._mlp: Optional[_MLP] = None
         self.last_text: str = ""
         self.last_value: str = ""
         self.last_predictions: list = []
+
+    def _preprocess(self, x: torch.Tensor) -> torch.Tensor:
+        """Adapte n'importe quelle image → (1,1,28,28) façon MNIST.
+
+        - RGB/RGBA → niveaux de gris (moyenne canaux)
+        - resize bilinéaire → 28×28
+        - invert auto : MNIST = chiffre clair sur fond noir. Photo papier =
+          chiffre foncé sur fond clair → inverse si fond clair détecté.
+        """
+        if x.dim() == 2:
+            x = x.view(1, 1, x.shape[-2], x.shape[-1])
+        elif x.dim() == 3:
+            x = x.unsqueeze(0)            # (1,C,H,W)
+        # (B,C,H,W) → grayscale
+        if x.shape[1] > 1:
+            x = x.mean(dim=1, keepdim=True)
+        # resize 28×28
+        if x.shape[-1] != 28 or x.shape[-2] != 28:
+            x = F.interpolate(x, size=(28, 28), mode="bilinear",
+                                  align_corners=False)
+        x = x.clamp(0, 1)
+        # invert
+        do_inv = (self.invert == "yes") or (
+            self.invert == "auto" and float(x.mean()) > 0.5)
+        if do_inv:
+            x = 1.0 - x
+        return x
 
     def _ensure_model(self):
         if self._mlp is not None:
@@ -154,13 +183,9 @@ class MnistRecognizer(nn.Module):
             return x
         try:
             mlp = self._ensure_model()
-            xi = x
-            if xi.dim() == 3:
-                xi = xi.unsqueeze(0)
-            if xi.dim() == 2:
-                xi = xi.view(1, 1, 28, 28)
+            xi = self._preprocess(x.float())   # → (1,1,28,28) MNIST-like
             with torch.no_grad():
-                logits = mlp(xi.float())
+                logits = mlp(xi)
             probs = F.softmax(logits, dim=-1)[0]
             digit = int(probs.argmax().item())
             conf = float(probs.max().item())
@@ -193,6 +218,7 @@ def h_mnist_recognizer(node, in_shapes):
     m = MnistRecognizer(
         auto_train=bool(node.params.get("auto_train", True)),
         epochs=int(node.params.get("epochs", 3)),
+        invert=node.params.get("invert", "auto"),
     )
     return m, (1, 10)
 
@@ -229,10 +255,17 @@ def register_mnist_demo_specs(registry) -> bool:
         params=[
             ParamSpec("auto_train", "bool", True),
             ParamSpec("epochs", "int", 3, min=1, max=20),
+            ParamSpec("invert", "choice", "auto",
+                          options=["auto", "yes", "no"]),
         ],
         description="Reconnaît le chiffre via MLP 784→128→64→10. "
-                       "S'entraîne au 1er usage (~10s, cache poids), puis "
-                       "instantané. Sortie = logits + chiffre reconnu.",
+                       "Auto-préprocess TOUTE image en entrée : grayscale + "
+                       "resize 28×28 + invert auto. Branche load_image_file "
+                       "directement. S'entraîne au 1er usage (~10s, cache).",
+        param_help={
+            "invert": "auto = inverse si fond clair (photo chiffre noir sur "
+                          "papier blanc). MNIST = chiffre clair sur fond noir.",
+        },
         role="Classifie image → chiffre 0-9.",
         function="MLP pré-entraîné MNIST · softmax → argmax. "
                     "last_text = 'Chiffre reconnu : N (xx%)'.",
