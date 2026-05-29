@@ -295,12 +295,15 @@ def template_metamorph_m5() -> dict:
 
 
 def template_text2video_tiny() -> dict:
-    """Phase 56 : prompt → animated frame seq → .gif/.mp4."""
+    """Phase 56 : prompt → animated frame seq → .gif/.mp4.
+
+    Le prompt est édité sur text_input (Inspector). text_to_frame_seq
+    le reçoit en string downstream.
+    """
     txt = _node("text_input", 0, 200,
                   {"prompt": "ocean sunset waves crashing"})
     tfs = _node("text_to_frame_seq", 280, 200,
-                  {"prompt": "ocean sunset waves crashing",
-                   "n_frames": 32, "height": 128, "width": 128})
+                  {"n_frames": 32, "height": 128, "width": 128})
     vw = _node("video_writer", 580, 200,
                  {"output_path": "./output/text2video.gif", "fps": 12})
     iv = _node("image_viewer", 580, 360,
@@ -316,11 +319,14 @@ def template_text2video_tiny() -> dict:
 
 
 def template_text2audio_tiny() -> dict:
-    """Phase 56 : prompt → melody → synth → .wav."""
+    """Phase 56 : prompt → melody → synth → .wav.
+
+    Édite le prompt sur text_input dans Inspector.
+    text_to_melody le reçoit downstream.
+    """
     txt = _node("text_input", 0, 200, {"prompt": "hello world music"})
     mel = _node("text_to_melody", 280, 200,
-                  {"prompt": "hello world music",
-                   "note_dur": 0.25, "base_octave": 4})
+                  {"note_dur": 0.25, "base_octave": 4})
     syn = _node("audio_synth", 580, 200,
                   {"sample_rate": 22050, "envelope": "adsr", "wave": "sine"})
     ap = _node("audio_player", 880, 200,

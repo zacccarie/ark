@@ -109,11 +109,20 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
     r.register(NodeSpec(
         name="text_input", title="Text Input", category="Input",
         outputs=[SocketSpec("out", "tensor")],
-        params=[ParamSpec("max_length", "int", 64),
-                 ParamSpec("embed_dim", "int", 128)],
-        description="Séquence (T, D) après embedding. Tokens texte → tenseur 2D.",
-        param_help={"max_length": "Longueur max de la séquence T (tokens).",
-                    "embed_dim": "Dimension D de l'embedding par token."},
+        params=[
+            ParamSpec("prompt", "multiline", ""),
+            ParamSpec("max_length", "int", 64),
+            ParamSpec("embed_dim", "int", 128),
+        ],
+        description="Saisir prompt texte. Si prompt non vide, renvoie string "
+                       "downstream (text_to_melody / text_to_frame_seq / "
+                       "tiny_llm_generate). Sinon pure shape hint (T, D).",
+        param_help={
+            "prompt": "Texte saisi par l'utilisateur. Source des nodes "
+                          "multimodales (audio/video/llm).",
+            "max_length": "Longueur max séquence T (tokens) — compat embeddings.",
+            "embed_dim": "Dimension D embedding — compat embeddings.",
+        },
     ))
 
     # ---------- Neural ----------

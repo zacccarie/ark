@@ -67,9 +67,26 @@ def h_tabular_input(node, in_shapes):
     return None, (n,)
 
 
+class _TextPromptSource(nn.Module):
+    """Phase 56e : text_input renvoie sa string `prompt` downstream.
+
+    Permet aux nodes multimodaux (text_to_melody, text_to_frame_seq,
+    tiny_llm_generate) de recevoir le prompt utilisateur.
+    """
+    def __init__(self, prompt: str = ""):
+        super().__init__()
+        self.prompt = prompt
+    def forward(self, x=None):
+        return self.prompt
+
+
 def h_text_input(node, in_shapes):
+    prompt = str(node.params.get("prompt", ""))
     T = int(node.params.get("max_length", 64))
     D = int(node.params.get("embed_dim", 128))
+    # Si prompt non vide → renvoie string. Sinon shape hint pur (compat back).
+    if prompt:
+        return _TextPromptSource(prompt), (T, D)
     return None, (T, D)
 
 
@@ -729,6 +746,16 @@ class GraphModel(nn.Module):
             if nid not in self.modules_dict:
                 continue
             mod = self.modules_dict[nid]
+            # Phase 56e : si source node a incoming déjà cached (e.g. text_input
+            # upstream avec prompt), pass it forward → permet prompt injection
+            ups = self.incoming.get(nid, [])
+            if ups and all(u in cache for u in ups):
+                up_vals = [cache[u] for u in ups]
+                try:
+                    cache[nid] = mod(*up_vals) if len(up_vals) > 1 else mod(up_vals[0])
+                    continue
+                except Exception:
+                    pass  # fallback no-arg call
             try:
                 cache[nid] = mod()
             except TypeError:
