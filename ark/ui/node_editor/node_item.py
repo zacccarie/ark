@@ -40,6 +40,7 @@ class NodeItem(QGraphicsItem):
         # Phase 51 : preview image (tensor C, H, W) pour save_image nodes
         self._preview_image_tensor = None
         self._preview_qimage = None
+        self._preview_text = None  # Phase 78 : aperçu données (csv/json/txt)
 
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -287,20 +288,48 @@ class NodeItem(QGraphicsItem):
         painter.setBrush(QBrush(QColor(T.BG_DEEP)))
         painter.drawRect(rect)
 
-        if self.spec.name in ("load_image", "save_image"):
+        # Phase 78 : si une image preview existe (image chargée/générée),
+        # l'affiche QUEL QUE SOIT le type de node.
+        if self._preview_qimage is not None:
             self._paint_image_placeholder(painter, rect)
-        elif self.spec.name == "webcam":
+            return
+        # Aperçu texte de données (csv/json/txt/list) si last_text dispo
+        data_txt = getattr(self, "_preview_text", None)
+        if data_txt:
+            self._paint_data_text(painter, rect, data_txt)
+            return
+
+        if self.spec.name in ("load_image", "load_image_file", "save_image",
+                                "image_viewer", "mnist_sample"):
+            self._paint_image_placeholder(painter, rect)
+        elif self.spec.name in ("webcam",):
             self._paint_webcam_placeholder(painter, rect)
-        elif self.spec.name == "microphone":
+        elif self.spec.name in ("microphone", "load_sound"):
             self._paint_audio_waveform(painter, rect)
         elif self.spec.name == "observer":
             self._paint_observer_sparkline(painter, rect)
         elif self.spec.name in ("plot_scatter", "plot_line"):
             self._paint_plot_placeholder(painter, rect)
         else:
-            painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+            painter.setPen(QPen(QColor(T.FG_DISABLED)))
+            font = QFont("SF Mono", T.FS_MICRO)
+            painter.setFont(font)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter,
-                             f"⟨ preview {self.spec.name} ⟩")
+                             "aperçu après compile")
+
+    def _paint_data_text(self, painter, rect, text: str):
+        """Aperçu texte (csv/json/txt/list) en mono dans la vignette."""
+        painter.fillRect(rect, QColor(T.BG_DEEP))
+        painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+        font = QFont("SF Mono", T.FS_MICRO)
+        painter.setFont(font)
+        from PySide6.QtCore import QRectF as _QR
+        inner = _QR(rect.x() + 4, rect.y() + 3,
+                    rect.width() - 8, rect.height() - 6)
+        painter.drawText(inner,
+                         Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+                         | Qt.TextFlag.TextWordWrap,
+                         str(text)[:200])
 
     def _paint_image_placeholder(self, painter, rect):
         # Phase 52 : preserve aspect ratio (no width stretch)
@@ -506,13 +535,20 @@ class NodeItem(QGraphicsItem):
                 self.update()
                 return
             self._preview_image_tensor = tensor
-            arr = tensor.clamp(0, 1).permute(1, 2, 0).cpu().numpy()
             import numpy as np
+            t = tensor.clamp(0, 1)
+            if t.dim() == 2:
+                t = t.unsqueeze(0)
+            # grayscale (1,H,W) → RGB
+            if t.shape[0] == 1:
+                t = t.repeat(3, 1, 1)
+            arr = t.permute(1, 2, 0).cpu().numpy()
             arr = (arr * 255).astype(np.uint8)
             if arr.shape[2] == 4:
                 arr = arr[..., :3]
+            arr = np.ascontiguousarray(arr)
             h, w, c = arr.shape
-            bytes_per_line = c * w
+            bytes_per_line = 3 * w
             qimg = QImage(arr.tobytes(), w, h, bytes_per_line,
                             QImage.Format.Format_RGB888).copy()
             self._preview_qimage = qimg

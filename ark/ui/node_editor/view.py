@@ -274,6 +274,15 @@ class NodeEditorView(QGraphicsView):
         conn.set_dragging_end(scene_pos)
         self._dragging_conn = conn
         self._drag_start_socket = socket
+        # Phase 78 : visual language — éclaire tous les sockets compatibles
+        for node in scene.nodes():
+            for s in list(node.input_sockets) + list(node.output_sockets):
+                if s is socket:
+                    continue
+                if self._can_connect(socket, s):
+                    s.set_highlight(True)
+                else:
+                    s.set_highlight(True, reject=True)
 
     def _can_connect(self, src: SocketItem | None, dst: SocketItem | None) -> bool:
         if src is None or dst is None or src is dst:
@@ -298,7 +307,12 @@ class NodeEditorView(QGraphicsView):
         conn = self._dragging_conn
         start = self._drag_start_socket
         target = self.itemAt(event.position().toPoint())
-        # Reset highlight
+        # Phase 78 : reset tous les highlights/rejects globaux
+        if scene is not None:
+            for node in scene.nodes():
+                for s in list(node.input_sockets) + list(node.output_sockets):
+                    s.set_highlight(False)
+        # Reset highlight survol
         if self._drag_hover_socket:
             self._drag_hover_socket.set_highlight(False)
             self._drag_hover_socket = None
