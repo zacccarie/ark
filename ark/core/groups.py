@@ -160,6 +160,49 @@ def list_group_files() -> list[Path]:
     return sorted(GROUPS_DIR.glob("*.json"))
 
 
+def load_group_by_name(name: str) -> dict | None:
+    """Phase 77 : retrouve un group payload par son slug (pour drill-in)."""
+    p = GROUPS_DIR / f"{name}.json"
+    if p.exists():
+        try:
+            return load_group(p)
+        except Exception:
+            return None
+    for f in list_group_files():
+        try:
+            d = load_group(f)
+            if d.get("name") == name:
+                return d
+        except Exception:
+            continue
+    return None
+
+
+def group_to_arch_payload(group: dict) -> dict:
+    """Convertit un group payload en architecture chargeable (drill-in tab)."""
+    from datetime import datetime, timezone
+    return {
+        "version": "ark-arch-v1",
+        "name": group.get("title", group.get("name", "Groupe")),
+        "nodes": [
+            {
+                "id": n["id"], "type": n["type"],
+                "params": n.get("params", {}),
+                "pos": n.get("pos", [0, 0]),
+                "width": n.get("width", 220),
+            }
+            for n in group.get("nodes", [])
+        ],
+        "connections": group.get("connections", []),
+        "metadata": {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "tags": ["group", "subgraph"],
+            "is_group_subgraph": True,
+            "group_name": group.get("name"),
+        },
+    }
+
+
 # ============================================================
 # Compile : group payload → nn.Module
 # ============================================================

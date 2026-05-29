@@ -118,6 +118,10 @@ class MainWindow(QMainWindow):
         a_group.setShortcut(QKeySequence("Ctrl+G"))
         a_group.triggered.connect(self._on_save_selection_as_group)
         edit_menu.addAction(a_group)
+        a_collapse = QAction("Collapse sélection → node groupe (precomp)", self)
+        a_collapse.setShortcut(QKeySequence("Ctrl+Shift+G"))
+        a_collapse.triggered.connect(self._on_collapse_selection_to_group)
+        edit_menu.addAction(a_collapse)
         a_reload_groups = QAction("Recharger groupes utilisateur", self)
         a_reload_groups.triggered.connect(self._on_reload_user_groups)
         edit_menu.addAction(a_reload_groups)
@@ -1095,6 +1099,114 @@ class MainWindow(QMainWindow):
                 f"({n} groupes chargés)", 4000)
         except Exception as e:
             self.statusBar().showMessage(f"Erreur save group : {e}", 5000)
+
+    def _on_collapse_selection_to_group(self):
+        """Phase 77 — Ctrl+Shift+G : collapse sélection en UNE node groupe
+        in-place (After Effects precomp). Reconnecte les arêtes externes."""
+        from ark.ui.node_editor.node_item import NodeItem
+        from ark.ui.node_editor.connection_item import ConnectionItem
+        from ark.ui.dialogs.save_group_dialog import SaveGroupDialog
+        from ark.core.groups import serialize_group, save_group, register_groups
+        from ark.core.graph_compiler import HANDLERS
+
+        sel = [it for it in self.scene.selectedItems()
+                 if isinstance(it, NodeItem)]
+        if len(sel) < 1:
+            self.statusBar().showMessage("Sélectionne ≥1 node à grouper", 2500)
+            return
+        dlg = SaveGroupDialog(self, n_selected=len(sel))
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        meta = dlg.get_payload()
+        try:
+            payload = serialize_group(self.scene, sel, name=meta["name"],
+                                          title=meta["title"],
+                                          category=meta["category"],
+                                          description=meta["description"])
+            save_group(payload)
+            register_groups(self.scene.registry, HANDLERS)
+            gtype = payload["name"]
+
+            exin = payload.get("exposed_inputs", [])
+            exout = payload.get("exposed_outputs", [])
+
+            def in_idx(nid, port):
+                for i, s in enumerate(exin):
+                    if s["node_id"] == nid and s["port"] == port:
+                        return i
+                return None
+
+            def out_idx(nid, port):
+                for i, s in enumerate(exout):
+                    if s["node_id"] == nid and s["port"] == port:
+                        return i
+                return None
+
+            sel_ids = {n.id for n in sel}
+            ext_in = []   # (external_output_socket, group_input_index)
+            ext_out = []  # (group_output_index, external_input_socket)
+            for c in self.scene.connections():
+                if c.start_socket is None or c.end_socket is None:
+                    continue
+                f = c.start_socket.parent_node.id
+                t = c.end_socket.parent_node.id
+                if f not in sel_ids and t in sel_ids:
+                    gi = in_idx(t, c.end_socket.index)
+                    if gi is not None:
+                        ext_in.append((c.start_socket, gi))
+                elif f in sel_ids and t not in sel_ids:
+                    gi = out_idx(f, c.start_socket.index)
+                    if gi is not None:
+                        ext_out.append((gi, c.end_socket))
+
+            # centroïde
+            cx = sum(n.pos().x() for n in sel) / len(sel)
+            cy = sum(n.pos().y() for n in sel) / len(sel)
+
+            # supprime nodes sélectionnés + leurs connexions
+            for n in sel:
+                for sock in list(n.input_sockets) + list(n.output_sockets):
+                    for conn in list(sock.connections):
+                        self.scene._raw_remove_connection(conn)
+                self.scene._raw_remove_node(n)
+
+            gnode = self.scene.create_node(gtype, cx, cy)
+            if gnode is None:
+                self.statusBar().showMessage(
+                    "Collapse échoué (type group introuvable)", 4000)
+                return
+            # reconnexion externe
+            for ext_sock, gi in ext_in:
+                if gi < len(gnode.input_sockets):
+                    conn = ConnectionItem(ext_sock, gnode.input_sockets[gi])
+                    self.scene._raw_add_connection(conn)
+            for gi, ext_sock in ext_out:
+                if gi < len(gnode.output_sockets):
+                    conn = ConnectionItem(gnode.output_sockets[gi], ext_sock)
+                    self.scene._raw_add_connection(conn)
+            if hasattr(self, "palette") and hasattr(self.palette, "refresh"):
+                self.palette.refresh()
+            self.statusBar().showMessage(
+                f"✓ Collapse : {len(sel)} nodes → groupe '{meta['title']}' "
+                f"(double-clic pour éditer)", 5000)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.statusBar().showMessage(f"Erreur collapse : {e}", 5000)
+
+    def _open_group_subgraph(self, group_name: str):
+        """Phase 77 — drill-in : ouvre le sous-graphe d'une node groupe
+        dans un nouvel onglet (precomp/COMP)."""
+        from ark.core.groups import load_group_by_name, group_to_arch_payload
+        grp = load_group_by_name(group_name)
+        if grp is None:
+            self.statusBar().showMessage(
+                f"Sous-graphe '{group_name}' introuvable", 3000)
+            return
+        arch = group_to_arch_payload(grp)
+        self.tabs.new_project(f"⊟ {arch['name']}", payload=arch)
+        self.statusBar().showMessage(
+            f"Sous-graphe '{arch['name']}' ouvert (édition)", 3000)
 
     def _on_open_benchmark_dashboard(self):
         """Phase 39 — ouvre dashboard benchmark non-modal."""

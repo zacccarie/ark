@@ -434,6 +434,18 @@ class NodeItem(QGraphicsItem):
         self.update()
 
     def mouseDoubleClickEvent(self, event):
+        # Phase 77 : drill-in si node groupe (precomp) — double-clic corps
+        if (event.pos().y() >= self.HEADER_H
+                and getattr(self.spec, "category", "") == "User Groups"):
+            try:
+                view = self.scene().views()[0]
+                win = view.window()
+                if hasattr(win, "_open_group_subgraph"):
+                    win._open_group_subgraph(self.spec.name)
+                    event.accept()
+                    return
+            except Exception:
+                pass
         # Bypass toggle au double-clic header band
         if event.pos().y() < self.HEADER_H:
             self.bypass = not self.bypass
