@@ -113,6 +113,23 @@ class ArkBridge(QObject):
                 pass
         return out
 
+    @Slot(str)
+    def spawn_node(self, node_type: str):
+        """Phase 62 : palette click → create node at viewport center."""
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return
+        try:
+            view = getattr(self._mw, "view", None)
+            if view is not None:
+                from PySide6.QtCore import QPointF
+                center = view.mapToScene(view.viewport().rect().center())
+                x, y = center.x(), center.y()
+            else:
+                x, y = 200.0, 200.0
+            self._mw.scene._raw_create_node(node_type, float(x), float(y))
+        except Exception as e:
+            self.emit_log(f"[spawn_node error] {e}")
+
     @Slot(str, str, "QVariant")
     def set_node_param(self, node_id: str, name: str, value: Any):
         if self._mw is None or not hasattr(self._mw, "scene"):
@@ -125,6 +142,17 @@ class ArkBridge(QObject):
     # ============================================================
     # Toolbar actions
     # ============================================================
+
+    @Slot(result=list)
+    def list_templates(self):
+        from ark.core.templates import TEMPLATES_LIST
+        return [{"name": n, "label": l} for n, l in TEMPLATES_LIST]
+
+    @Slot(str)
+    def load_template(self, name: str):
+        if self._mw and hasattr(self._mw, "_load_template"):
+            self._mw._load_template(name)
+            self.template_loaded.emit(name)
 
     @Slot(int)
     def compile(self, batch: int = 1):

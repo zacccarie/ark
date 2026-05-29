@@ -186,15 +186,37 @@ class MainWindow(QMainWindow):
         pass
 
     def _setup_floating_overlays(self):
-        """Phase 42/49/50 : overlays au-dessus du canvas central."""
+        """Phase 42/49/50/62 : overlays au-dessus du canvas central."""
         from ark.ui.floating_overlays import (
             LeftRail, ActionBar, StatsOverlay, ViewControls, GlobalProgress,
         )
         from ark.ui.minimap import Minimap
 
         host = self.tabs
+        # Phase 62 : in web mode, replace floating ActionBar with React toolbar dock
+        web = getattr(self, "_web_ui", False)
         self._left_rail = LeftRail(host)
-        self._action_bar = ActionBar(host)
+        if not web:
+            self._action_bar = ActionBar(host)
+        else:
+            # Build React toolbar as top dock
+            try:
+                from ark.ui.web_panels import WebPanel
+                from PySide6.QtWidgets import QDockWidget
+                self._dock_toolbar = QDockWidget("Toolbar", self)
+                self._dock_toolbar.setObjectName("dock_web_toolbar")
+                self._dock_toolbar.setTitleBarWidget(QWidget())  # hide title
+                tb_panel = WebPanel("toolbar", self._web_bridge, self._dock_toolbar)
+                self._dock_toolbar.setWidget(tb_panel)
+                self.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea,
+                                        self._dock_toolbar)
+                self._dock_toolbar.setMaximumHeight(48)
+                self._dock_toolbar.setMinimumHeight(48)
+            except Exception as e:
+                import sys
+                print(f"[ARK_WEB] toolbar dock failed: {e}", file=sys.stderr)
+                self._action_bar = ActionBar(host)
+                web = False  # fallback
         self._stats_overlay = StatsOverlay(host)
         self._view_controls = ViewControls(host)
         self._global_progress = GlobalProgress(host)
@@ -203,20 +225,25 @@ class MainWindow(QMainWindow):
         self._minimap = Minimap(self.scene, self.view, host)
         self._minimap.show()
 
-        for w in (self._left_rail, self._action_bar,
-                    self._stats_overlay, self._view_controls,
-                    self._global_progress, self._minimap):
+        raised = [self._left_rail, self._stats_overlay,
+                       self._view_controls, self._global_progress, self._minimap]
+        if not web:
+            raised.append(self._action_bar)
+        for w in raised:
             w.raise_()
-        for w in (self._left_rail, self._action_bar,
-                    self._stats_overlay, self._view_controls):
+        shown = [self._left_rail, self._stats_overlay, self._view_controls]
+        if not web:
+            shown.append(self._action_bar)
+        for w in shown:
             w.show()
 
-        # Wire ActionBar signals
-        self._action_bar.compile_clicked.connect(self._on_action_run)
-        self._action_bar.stop_clicked.connect(self._on_stop)
-        self._action_bar.extensions_clicked.connect(self._on_browse_templates)
-        self._action_bar.btn_inspector_toggle.clicked.connect(
-            self._toggle_inspector)
+        # Wire ActionBar signals (Qt mode only)
+        if not web:
+            self._action_bar.compile_clicked.connect(self._on_action_run)
+            self._action_bar.stop_clicked.connect(self._on_stop)
+            self._action_bar.extensions_clicked.connect(self._on_browse_templates)
+            self._action_bar.btn_inspector_toggle.clicked.connect(
+                self._toggle_inspector)
 
         # Wire LeftRail
         self._left_rail.panel_toggled.connect(self._on_left_rail_panel)
@@ -339,12 +366,13 @@ class MainWindow(QMainWindow):
         self._left_rail.setGeometry(
             0, top_y, rail_w, host_rect.height() - top_y)
 
-        # ActionBar : top-right under tab bar
-        ab = self._action_bar
-        ab.adjustSize()
-        ab_w = ab.sizeHint().width()
-        ab_h = ab.sizeHint().height()
-        ab.setGeometry(host_rect.width() - ab_w - margin, top_y, ab_w, ab_h)
+        # ActionBar : top-right under tab bar (Qt mode only)
+        if hasattr(self, "_action_bar"):
+            ab = self._action_bar
+            ab.adjustSize()
+            ab_w = ab.sizeHint().width()
+            ab_h = ab.sizeHint().height()
+            ab.setGeometry(host_rect.width() - ab_w - margin, top_y, ab_w, ab_h)
 
         # GlobalProgress (Phase 49) : top-center sous ActionBar
         if hasattr(self, "_global_progress"):
@@ -538,10 +566,13 @@ class MainWindow(QMainWindow):
         sel = self.scene.selectedItems()
         from ark.ui.node_editor.node_item import NodeItem
         nodes = [i for i in sel if isinstance(i, NodeItem)]
-        if len(nodes) == 1:
-            self.inspector.set_node(nodes[0])
-        else:
-            self.inspector.set_node(None)
+        selected = nodes[0] if len(nodes) == 1 else None
+        # Qt-side inspector (None in web mode)
+        if getattr(self, "inspector", None) is not None:
+            self.inspector.set_node(selected)
+        # Phase 62 : push to React bridge (web mode)
+        if getattr(self, "_web_bridge", None) is not None:
+            self._web_bridge.emit_selection(selected)
 
     def _on_new(self):
         # Phase 12 : ouvre un NOUVEAU tab (vs effacer l'actuel)

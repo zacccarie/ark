@@ -43,6 +43,11 @@ export function PalettePanel() {
     e.dataTransfer.effectAllowed = "copy";
   };
 
+  const handleClick = async (nodeName: string) => {
+    const b = await getBridge();
+    b.spawn_node?.(nodeName);
+  };
+
   return (
     <div className="flex flex-col h-full bg-bg-panel">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
@@ -98,12 +103,14 @@ export function PalettePanel() {
                         key={n.name}
                         draggable
                         onDragStart={(e) => handleDragStart(e, n.name)}
+                        onDoubleClick={() => handleClick(n.name)}
+                        onClick={() => handleClick(n.name)}
                         className={cn(
-                          "px-2 py-1.5 text-xs rounded-sm cursor-grab",
+                          "px-2 py-1.5 text-xs rounded-sm cursor-pointer",
                           "text-fg-secondary hover:bg-bg-raised hover:text-fg",
-                          "transition-colors duration-fast active:cursor-grabbing"
+                          "active:bg-primary/20 transition-colors duration-fast"
                         )}
-                        title={n.name}
+                        title={`${n.name} — click to add`}
                       >
                         {n.title}
                       </div>

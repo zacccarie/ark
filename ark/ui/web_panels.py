@@ -71,13 +71,24 @@ def build_web_docks(main_window, bridge) -> dict[str, QDockWidget]:
     Returns dict {name: QDockWidget}. Caller is responsible for addDockWidget.
     """
     docks: dict[str, QDockWidget] = {}
-    for name, title, area in [
-        ("palette", "Palette", Qt.DockWidgetArea.LeftDockWidgetArea),
-        ("inspector", "Inspector", Qt.DockWidgetArea.RightDockWidgetArea),
-        ("terminal", "Terminal", Qt.DockWidgetArea.BottomDockWidgetArea),
+    sizes = {
+        "palette": (260, 0),       # min width, min height
+        "inspector": (300, 0),
+        "terminal": (0, 180),
+    }
+    for name, title in [
+        ("palette", "Palette"),
+        ("inspector", "Inspector"),
+        ("terminal", "Terminal"),
     ]:
         dock = QDockWidget(title, main_window)
         dock.setObjectName(f"dock_web_{name}")
-        dock.setWidget(WebPanel(name, bridge, dock))
+        panel = WebPanel(name, bridge, dock)
+        dock.setWidget(panel)
+        mw, mh = sizes[name]
+        if mw:
+            dock.setMinimumWidth(mw)
+        if mh:
+            dock.setMinimumHeight(mh)
         docks[name] = dock
     return docks
