@@ -14,6 +14,7 @@ export function ArchitectPanel() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [pendingArch, setPendingArch] = useState<any>(null);
+  const [pendingActions, setPendingActions] = useState<any[] | null>(null);
   const [provider, setProvider] = useState("anthropic");
   const [model, setModel] = useState("claude-3-5-sonnet-latest");
   const [apiKey, setApiKey] = useState("");
@@ -52,6 +53,11 @@ export function ArchitectPanel() {
       if (b.architect_arch_proposed?.connect) {
         b.architect_arch_proposed.connect((arch: any) => setPendingArch(arch));
       }
+      if (b.architect_actions_proposed?.connect) {
+        b.architect_actions_proposed.connect((acts: any[]) =>
+          setPendingActions(acts)
+        );
+      }
     })();
   }, []);
 
@@ -68,6 +74,7 @@ export function ArchitectPanel() {
     bridge.architect_chat?.(input);
     setStreaming(true);
     setPendingArch(null);
+    setPendingActions(null);
     setInput("");
   };
 
@@ -75,6 +82,23 @@ export function ArchitectPanel() {
     if (!pendingArch || !bridge) return;
     bridge.architect_apply_arch?.(pendingArch);
     setPendingArch(null);
+  };
+
+  const applyActions = async () => {
+    if (!pendingActions || !bridge) return;
+    const res = await bridge.architect_apply_actions?.(pendingActions);
+    setPendingActions(null);
+    if (res) {
+      setMsgs((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `✓ Appliqué : ${res.ok} ops réussies${
+            res.fail ? `, ${res.fail} erreurs : ${res.errors.join("; ")}` : ""
+          }`,
+        },
+      ]);
+    }
   };
 
   const reset = () => {
@@ -228,6 +252,47 @@ export function ArchitectPanel() {
             >
               <Check className="w-3.5 h-3.5" />
               Charger dans nouvel onglet
+            </button>
+          </div>
+        )}
+
+        {pendingActions && (
+          <div className="ark-card p-3 border-accent-blue/50">
+            <p className="text-[10px] uppercase tracking-widest text-accent-blue font-bold mb-2">
+              {pendingActions.length} action(s) sur scène courante
+            </p>
+            <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
+              {pendingActions.map((a, i) => (
+                <div
+                  key={i}
+                  className="font-mono text-[10px] text-fg-secondary bg-bg-deep px-2 py-1 rounded-sm"
+                >
+                  <span className="text-accent-blue font-bold">{a.op}</span>{" "}
+                  {a.type && <span className="text-primary">{a.type}</span>}
+                  {a.id && <span className="text-fg-tertiary"> #{a.id}</span>}
+                  {a.name && <span className="text-primary"> {a.name}</span>}
+                  {a.params && (
+                    <span className="text-fg-tertiary ml-1">
+                      {Object.entries(a.params)
+                        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+                        .join(", ")}
+                    </span>
+                  )}
+                  {a.from && a.to && (
+                    <span className="text-fg-tertiary">
+                      {" "}
+                      {a.from}:{a.from_socket || 0} → {a.to}:{a.to_socket || 0}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={applyActions}
+              className="ark-btn-primary w-full flex items-center justify-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Appliquer sur scène
             </button>
           </div>
         )}

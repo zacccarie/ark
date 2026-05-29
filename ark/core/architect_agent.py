@@ -29,47 +29,112 @@ DOMAINES MAÎTRISÉS :
 • Data systems (Parquet, Arrow, Iceberg, DuckDB, vector DBs, RAG)
 • Théorie ML (PAC, double-descent, NTK, lottery ticket, scaling laws)
 
-NODES ARK DISPONIBLES (par catégorie) :
+═══════════════════════════════════════════════════════════════
+NODES ARK DISPONIBLES (catalogue compact par catégorie)
+═══════════════════════════════════════════════════════════════
 {nodes_catalog}
 
-WORKFLOW :
-1. Comprends l'intent utilisateur (tâche, données, contraintes compute).
-2. Si problème mal posé → pose 1-2 questions ciblées.
-3. Si clair → réponds avec :
-   - Réflexion courte (2-4 lignes max)
-   - Architecture proposée (texte concis : nodes + connexions)
-   - Si applicable : BLOC JSON ark-arch-v1 prêt à charger (entre balises
-     ```ark-arch et ```).
-4. Justifications scientifiques (cite papers si pertinent).
-5. Mentionne trade-offs (compute, mémoire, expressivité, généralisation).
+═══════════════════════════════════════════════════════════════
+NODES PHARES (spec détaillée — params + types)
+═══════════════════════════════════════════════════════════════
+{nodes_detailed}
 
-FORMAT JSON ATTENDU (si proposition complète) :
+═══════════════════════════════════════════════════════════════
+TEMPLATES PRÉFABRIQUÉS (chargeables via op spawn_template)
+═══════════════════════════════════════════════════════════════
+{templates_list}
+
+═══════════════════════════════════════════════════════════════
+ACTIONS APP DISPONIBLES (ops dans bloc ark-action)
+═══════════════════════════════════════════════════════════════
+Tu peux modifier la scène COURANTE atomiquement via un bloc :
+```ark-action
+[
+  {{"op": "node_add", "type": "<type_name>", "params": {{...}},
+                       "pos": [x, y], "id": "<optional_id>"}},
+  {{"op": "node_edit", "id": "<node_id>", "params": {{...}}}},
+  {{"op": "node_remove", "id": "<node_id>"}},
+  {{"op": "connect", "from": "<src_id>", "from_socket": 0,
+                      "to": "<dst_id>", "to_socket": 0}},
+  {{"op": "disconnect", "from": "<src_id>", "from_socket": 0,
+                         "to": "<dst_id>", "to_socket": 0}},
+  {{"op": "spawn_template", "name": "<template_name>"}},
+  {{"op": "compile"}},
+  {{"op": "train"}},
+  {{"op": "log", "message": "..."}}
+]
+```
+
+Pour proposition complète (nouveau projet) → bloc ark-arch :
 ```ark-arch
 {{
   "version": "ark-arch-v1",
   "name": "Nom court",
   "nodes": [
-    {{"id":"n1","type":"text_input","params":{{"prompt":"..."}},"pos":[0,200],"width":220}},
-    ...
+    {{"id":"n1","type":"text_input","params":{{"prompt":"..."}},
+      "pos":[0,200],"width":220}}
   ],
   "connections": [
-    {{"from_node":"n1","from_socket":0,"to_node":"n2","to_socket":0}},
-    ...
+    {{"from_node":"n1","from_socket":0,"to_node":"n2","to_socket":0}}
   ],
   "metadata": {{"tags":["..."]}}
 }}
 ```
 
+═══════════════════════════════════════════════════════════════
+WORKFLOW
+═══════════════════════════════════════════════════════════════
+1. Comprends intent (tâche, données, contraintes compute).
+2. Si problème mal posé → 1-2 questions ciblées.
+3. Si scène vide ou nouvelle tâche → bloc ark-arch (full project).
+4. Si scène existe et user demande modification → bloc ark-action
+   (préfère ark-action pour éviter perte travail user).
+5. Justifications scientifiques courtes (cite papers si pertinent).
+6. Mentionne trade-offs (compute, mémoire, expressivité).
+
 CONTRAINTES :
 - NEVER invent un type de node absent du catalogue.
 - Pos : grille 280px horizontal, 200px vertical.
-- Réponses en français.
-- Concis. Pas de blabla. Caveman-style autorisé.
+- Réponses en français, concises. Caveman-style autorisé.
+- Si user demande "ajoute X" → ark-action node_add, PAS ark-arch.
+- Toujours nodes IDs cohérents quand connect (utiliser ceux que tu
+  viens de node_add, ou ceux fournis dans ARCHITECTURE COURANTE).
 """
 
 
+# Sélection nodes à détailler (params + descriptions complets)
+_DETAILED_NODES = {
+    # Input
+    "text_input", "image_input", "tabular_input",
+    "load_image_file", "load_video", "load_sound", "load_csv",
+    "torchvision_dataset", "synthetic_dataset",
+    # Neural
+    "dense", "conv2d", "conv_transpose2d", "max_pool", "avg_pool",
+    "batch_norm", "layer_norm", "group_norm", "dropout",
+    "embedding", "positional_encoding", "transformer_block",
+    "self_attention", "residual_connection",
+    # Loss + optim
+    "cross_entropy", "mse_loss", "adam", "sgd",
+    # Diffusion
+    "timestep_embedding", "class_embedding", "cross_attention",
+    "diffusion_scheduler", "unet_mini", "ddim_sampler",
+    # Multimodal
+    "text_to_frame_seq", "video_writer", "text_to_melody",
+    "audio_synth", "audio_player", "audio_writer",
+    "imagenet_classifier", "caption_formatter",
+    "musicgen_audio", "bark_audio", "text2video_diffusion",
+    # Tiny LLM
+    "tiny_llm_corpus", "tiny_llm_model", "tiny_llm_generate",
+    # Output Viewer
+    "text_viewer", "number_display", "image_viewer",
+    "top_k_predictions", "prob_distribution",
+    # Code
+    "code_block",
+}
+
+
 def _nodes_catalog() -> str:
-    """Construit catalogue compact des nodes ARK pour le system prompt."""
+    """Catalogue compact : juste names par catégorie."""
     try:
         from ark.nodes.registry import default_registry
         r = default_registry()
@@ -84,8 +149,54 @@ def _nodes_catalog() -> str:
         return f"  (erreur catalogue: {e})"
 
 
+def _nodes_detailed() -> str:
+    """Spec détaillée pour les nodes phares (params + kinds + defaults)."""
+    try:
+        from ark.nodes.registry import default_registry
+        r = default_registry()
+        lines = []
+        for name in sorted(_DETAILED_NODES):
+            s = r.get(name)
+            if s is None:
+                continue
+            param_strs = []
+            for p in s.params:
+                opts = ""
+                if p.kind == "choice" and p.options:
+                    opts = f"∈[{'|'.join(map(str, p.options))}]"
+                rng = ""
+                if p.min is not None or p.max is not None:
+                    rng = f" ({p.min}..{p.max})"
+                param_strs.append(
+                    f"{p.name}:{p.kind}={p.default}{opts}{rng}")
+            params_txt = ", ".join(param_strs) if param_strs else "—"
+            short_desc = (s.description or "").split(".")[0][:120]
+            inputs = ", ".join(f"{x.label}:{x.socket_type}" for x in s.inputs)
+            outputs = ", ".join(f"{x.label}:{x.socket_type}" for x in s.outputs)
+            lines.append(
+                f"• {s.name} [{s.category}] — {short_desc}\n"
+                f"    in: ({inputs or 'none'}) → out: ({outputs or 'none'})\n"
+                f"    params: {params_txt}"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"  (erreur détails: {e})"
+
+
+def _templates_list() -> str:
+    try:
+        from ark.core.templates import TEMPLATES_LIST
+        return "\n".join(f"  - {n} : {label}" for n, label in TEMPLATES_LIST)
+    except Exception:
+        return "  (none)"
+
+
 def system_prompt() -> str:
-    return SYSTEM_PROMPT.format(nodes_catalog=_nodes_catalog())
+    return SYSTEM_PROMPT.format(
+        nodes_catalog=_nodes_catalog(),
+        nodes_detailed=_nodes_detailed(),
+        templates_list=_templates_list(),
+    )
 
 
 # ============================================================
@@ -164,6 +275,22 @@ class ArchitectAgent:
 
 _ARCH_BLOCK_RE = re.compile(r"```ark-arch\s*([\s\S]+?)```",
                                   re.MULTILINE)
+_ACTION_BLOCK_RE = re.compile(r"```ark-action\s*([\s\S]+?)```",
+                                     re.MULTILINE)
+
+
+def extract_actions(text: str) -> Optional[list]:
+    """Extrait premier bloc ```ark-action JSON array."""
+    m = _ACTION_BLOCK_RE.search(text)
+    if not m:
+        return None
+    try:
+        arr = json.loads(m.group(1).strip())
+        if isinstance(arr, list):
+            return arr
+    except Exception:
+        return None
+    return None
 
 
 def extract_arch_json(text: str) -> Optional[dict]:

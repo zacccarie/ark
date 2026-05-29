@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from PySide6.QtCore import QObject, Signal, Slot, Qt
 
@@ -29,6 +29,7 @@ class ArkBridge(QObject):
     architect_chunk = Signal(str)        # streamed token
     architect_done = Signal(str)          # full final message
     architect_arch_proposed = Signal(object)  # parsed dict
+    architect_actions_proposed = Signal(object)  # list of ops
 
     def __init__(self, main_window=None, parent=None):
         super().__init__(parent)
@@ -376,10 +377,13 @@ class ArkBridge(QObject):
         self._arch_thread.start()
 
     def _on_architect_done(self, full: str):
-        from ark.core.architect_agent import extract_arch_json
+        from ark.core.architect_agent import extract_arch_json, extract_actions
         arch = extract_arch_json(full)
         if arch is not None:
             self.architect_arch_proposed.emit(arch)
+        acts = extract_actions(full)
+        if acts is not None:
+            self.architect_actions_proposed.emit(acts)
         self.architect_done.emit(full)
         try:
             self._arch_thread.quit()
@@ -398,6 +402,124 @@ class ArkBridge(QObject):
                 self._mw.tabs.new_project(name, payload=arch)
         except Exception as e:
             self.emit_log(f"[architect apply error] {e}")
+
+    @Slot("QVariant", result=object)
+    def architect_apply_actions(self, actions: list):
+        """Phase 66 : applique liste d'ops sur scène courante."""
+        if self._mw is None:
+            return {"ok": 0, "fail": 0, "errors": ["no main window"]}
+        scene = getattr(self._mw, "scene", None)
+        view = getattr(self._mw, "view", None)
+        if scene is None:
+            return {"ok": 0, "fail": 0, "errors": ["no scene"]}
+        ok, fail, errors = 0, 0, []
+        # ID alias map (LLM-provided ids → real node ids after creation)
+        id_map: dict[str, str] = {}
+
+        def _resolve_id(s: str) -> Optional[str]:
+            if s in id_map:
+                return id_map[s]
+            for it in scene.items():
+                if getattr(it, "id", None) == s:
+                    return s
+            return None
+
+        for i, act in enumerate(actions):
+            try:
+                op = act.get("op")
+                if op == "node_add":
+                    pos = act.get("pos") or [200.0, 200.0]
+                    node = scene._raw_create_node(
+                        act["type"], float(pos[0]), float(pos[1]))
+                    if node is None:
+                        raise ValueError(f"unknown type {act['type']}")
+                    # Apply params via set_param
+                    for k, v in (act.get("params") or {}).items():
+                        if hasattr(node, "set_param"):
+                            node.set_param(k, v)
+                    if "id" in act:
+                        id_map[act["id"]] = node.id
+                    ok += 1
+                elif op == "node_edit":
+                    rid = _resolve_id(act["id"])
+                    if rid is None:
+                        raise ValueError(f"node id not found: {act['id']}")
+                    for it in scene.items():
+                        if getattr(it, "id", None) == rid:
+                            for k, v in (act.get("params") or {}).items():
+                                it.set_param(k, v)
+                            break
+                    ok += 1
+                elif op == "node_remove":
+                    rid = _resolve_id(act["id"])
+                    if rid is None:
+                        raise ValueError(f"node id not found: {act['id']}")
+                    for it in list(scene.items()):
+                        if getattr(it, "id", None) == rid:
+                            scene.removeItem(it)
+                            break
+                    ok += 1
+                elif op == "connect":
+                    src_id = _resolve_id(act["from"])
+                    dst_id = _resolve_id(act["to"])
+                    if not src_id or not dst_id:
+                        raise ValueError("connect ids unresolved")
+                    src_node = dst_node = None
+                    for it in scene.items():
+                        if getattr(it, "id", None) == src_id:
+                            src_node = it
+                        elif getattr(it, "id", None) == dst_id:
+                            dst_node = it
+                    if not src_node or not dst_node:
+                        raise ValueError("connect nodes missing")
+                    fs = int(act.get("from_socket", 0))
+                    ts = int(act.get("to_socket", 0))
+                    src_sock = src_node.output_sockets[fs]
+                    dst_sock = dst_node.input_sockets[ts]
+                    scene._raw_create_connection(src_sock, dst_sock)
+                    ok += 1
+                elif op == "spawn_template":
+                    from ark.core.templates import get_template
+                    tpl = get_template(act["name"])
+                    if tpl is None:
+                        raise ValueError(f"unknown template {act['name']}")
+                    if hasattr(self._mw, "tabs"):
+                        self._mw.tabs.new_project(
+                            tpl.get("name", act["name"]), payload=tpl)
+                    ok += 1
+                elif op == "compile":
+                    if hasattr(self._mw, "_on_compile"):
+                        self._mw._on_compile()
+                    ok += 1
+                elif op == "train":
+                    if hasattr(self._mw, "_on_train"):
+                        self._mw._on_train()
+                    ok += 1
+                elif op == "log":
+                    self.emit_log(f"[architect] {act.get('message', '')}")
+                    ok += 1
+                else:
+                    raise ValueError(f"unknown op: {op}")
+            except Exception as e:
+                fail += 1
+                errors.append(f"op {i} ({act.get('op')}): {e}")
+        if view is not None:
+            try:
+                view.viewport().update()
+            except Exception:
+                pass
+        return {"ok": ok, "fail": fail, "errors": errors}
+
+    @Slot(result=object)
+    def architect_get_scene_json(self):
+        """Renvoie scene actuelle sérialisée pour debug/inspection LLM."""
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return {}
+        try:
+            from ark.core.format import scene_to_payload
+            return scene_to_payload(self._mw.scene, name="current")
+        except Exception:
+            return {}
 
     # ============================================================
     # Lifecycle hooks (called by MainWindow)
