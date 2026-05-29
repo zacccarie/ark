@@ -535,6 +535,13 @@ class MainWindow(QMainWindow):
                     self.inspector = None
                     self.terminal = _TerminalShim(self._web_bridge)
                     self._web_ui = True
+                    # Phase 71d : connect selection → bridge (web branch returns
+                    # early, before the Qt-mode connect at end of _build_docks).
+                    try:
+                        self.scene.selectionChanged.connect(
+                            self._on_scene_selection_changed)
+                    except Exception:
+                        pass
                     return
                 else:
                     import sys
