@@ -1034,4 +1034,9 @@ def compile_scene(scene, num_classes: int | None = None,
     in_sh = shapes_by_id[input_id]
     if isinstance(in_sh, tuple) and len(in_sh) > 0 and isinstance(in_sh[0], tuple):
         in_sh = in_sh[0]
+    # Phase 75b : expose per-node output shapes pour viz/inspection
+    try:
+        model.shapes_by_id = dict(shapes_by_id)
+    except Exception:
+        pass
     return CompiledGraph(model, in_sh, final_shape, num_classes)

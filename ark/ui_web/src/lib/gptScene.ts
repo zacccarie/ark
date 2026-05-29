@@ -329,6 +329,12 @@ export type GenericLayer = {
   kind: keyof typeof COL;
   size: number;
   nIn: number;
+  params?: number;
+  neurons?: number;
+  subs?: string[];
+  outShape?: string;
+  role?: string;
+  func?: string;
 };
 
 export function buildGenericScene(layers: GenericLayer[]): {
@@ -359,11 +365,26 @@ export function buildGenericScene(layers: GenericLayer[]): {
     lbl.position.set(0, h / 2 + 1.6, 0);
     lbl.scale.set(10, 2.5, 1);
     g.add(lbl);
-    if (layer.sub) {
-      const sub = labelSprite(layer.sub, "#B8B8C0");
+    // Sous-titre : params réels si dispo, sinon résumé params
+    let subtitle = layer.sub;
+    if (layer.params && layer.params > 0) {
+      const pk = layer.params >= 1000
+        ? `${(layer.params / 1000).toFixed(layer.params >= 1e6 ? 1 : 0)}${
+            layer.params >= 1e6 ? "M" : "k"}`
+        : `${layer.params}`;
+      subtitle = `${pk} params`;
+    }
+    if (subtitle) {
+      const sub = labelSprite(subtitle, "#B8B8C0");
       sub.position.set(0, h / 2 + 0.2, 0);
       sub.scale.set(9, 1.8, 1);
       g.add(sub);
+    }
+    if (layer.outShape) {
+      const sh = labelSprite(layer.outShape, "#71717A");
+      sh.position.set(0, -h / 2 - 1.2, 0);
+      sh.scale.set(8, 1.6, 1);
+      g.add(sh);
     }
     g.position.set(x, 0, 0);
     g.userData.moduleKey = layer.id;
@@ -371,13 +392,24 @@ export function buildGenericScene(layers: GenericLayer[]): {
     root.add(g);
 
     const center = new THREE.Vector3(x, 0, 0);
+    // Info riche : params, neurones, shape, sous-couches, rôle
+    const infoLines: string[] = [];
+    if (layer.outShape) infoLines.push(`sortie : ${layer.outShape}`);
+    if (layer.params && layer.params > 0)
+      infoLines.push(`paramètres : ${layer.params.toLocaleString()}`);
+    if (layer.neurons && layer.neurons > 0)
+      infoLines.push(`neurones/canaux : ${layer.neurons}`);
+    if (layer.subs && layer.subs.length)
+      infoLines.push("sous-couches : " + layer.subs.join(" · "));
+    if (layer.role) infoLines.push(layer.role);
+    if (!infoLines.length) infoLines.push(layer.sub || layer.type);
     modules.push({
       key: layer.id, center, radius: Math.max(h, w, d), meshes: [g],
       meta: {
         label: layer.label,
         category: layer.category,
         colorHex: hex(color),
-        info: `${layer.sub || layer.type} · taille ≈ ${layer.size}`,
+        info: infoLines.join("\n"),
       },
     });
     prevCenters.push(center);

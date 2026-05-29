@@ -28,6 +28,7 @@ export function Visualizer3D() {
   const [bridge, setBridge] = useState<any>(null);
   const [fromArk, setFromArk] = useState(false);
   const [genericLayers, setGenericLayers] = useState<GenericLayer[] | null>(null);
+  const [genericTotalParams, setGenericTotalParams] = useState(0);
   const [toast, setToast] = useState<string>("");
   const [hover, setHover] = useState<
     { meta: ModuleMeta; x: number; y: number } | null
@@ -194,12 +195,20 @@ export function Visualizer3D() {
             "va de gauche (entrée) à droite (sortie). Hauteur/profondeur des " +
             "blocs ∝ taille (neurones/canaux). Glisse pour parcourir chaque couche.",
         },
-        ...genericLayers.map((l) => ({
-          title: l.label,
-          focus: l.id,
-          body: `${l.label}${l.sub ? " · " + l.sub : ""}\nCatégorie : ` +
-            `${l.category}. Type node : ${l.type}.`,
-        })),
+        ...genericLayers.map((l) => {
+          const parts: string[] = [];
+          if (l.outShape) parts.push(`Sortie : ${l.outShape}.`);
+          if (l.params && l.params > 0)
+            parts.push(`${l.params.toLocaleString()} paramètres.`);
+          if (l.neurons && l.neurons > 0)
+            parts.push(`${l.neurons} neurones/canaux en sortie.`);
+          if (l.subs && l.subs.length)
+            parts.push("Sous-couches : " + l.subs.join(" · ") + ".");
+          if (l.role) parts.push(l.role);
+          if (l.func) parts.push(l.func);
+          if (!parts.length) parts.push(`Catégorie ${l.category} · ${l.type}.`);
+          return { title: l.label, focus: l.id, body: parts.join(" ") };
+        }),
       ];
       setSteps(gsteps);
     } else {
@@ -264,9 +273,13 @@ export function Visualizer3D() {
           return;
         }
         setGenericLayers(c.layers);
+        setGenericTotalParams(c.totalParams || 0);
         setPresetName(`ARK · ${c.name || "scène"}`);
         setFromArk(true);
-        setToast(`${c.layers.length} couches chargées.`);
+        const pstr = c.totalParams
+          ? ` · ${c.totalParams.toLocaleString()} params`
+          : "";
+        setToast(`${c.layers.length} couches chargées${pstr}.`);
         setTimeout(() => setToast(""), 2500);
       } else if (c && c.nEmbd) {
         // Transformer/GPT mode
@@ -359,7 +372,7 @@ export function Visualizer3D() {
             {hover.meta.category}
           </p>
           {hover.meta.info && (
-            <p className="text-[11px] text-fg-secondary leading-snug">
+            <p className="text-[11px] text-fg-secondary leading-snug whitespace-pre-line">
               {hover.meta.info}
             </p>
           )}

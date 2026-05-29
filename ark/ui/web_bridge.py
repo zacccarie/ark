@@ -582,50 +582,125 @@ class ArkBridge(QObject):
                                   "error": str(e)})
 
     def _build_generic_layers(self) -> dict:
-        """Topo-ordonne la scène → liste de couches pour viz 3D générique."""
+        """Topo-ordonne la scène → couches pour viz 3D générique.
+
+        Phase 75b : compile headless → vraies shapes + introspection modules
+        (params réels, neurones, sous-couches). Fallback heuristique si
+        compile échoue.
+        """
         from ark.core.graph_compiler import _topo_sort_scene
-        # Catégories → couleur (hex int côté JS)
         CAT_COLOR = {
-            "Input": "embed", "Neural": "mlp", "Convolution": "attn",
-            "Normalization": "ln", "Activation": "softmax",
-            "Diffusion": "attn", "Output Viewer": "output",
-            "Loss": "output", "Optimizer": "proj",
+            "Input": "embed", "Neural": "mlp", "Neural Networks": "mlp",
+            "Convolution": "attn", "Normalization": "ln",
+            "Activation": "softmax", "Diffusion": "attn",
+            "Transformers": "attn", "Tiny LLM": "attn",
+            "Output Viewer": "output", "Data": "proj",
+            "Loss": "output", "Optimizer": "proj", "Demo": "embed",
+            "Multimodal": "attn",
         }
         try:
             ordered, incoming, outgoing, routed = _topo_sort_scene(self._mw.scene)
         except Exception:
             ordered = self._mw.scene.nodes()
             incoming = {}
+
+        # Compile headless pour shapes + modules réels
+        shapes_by_id, modules_by_id = {}, {}
+        try:
+            from ark.core.format import scene_to_payload
+            from ark.core.headless_scene import compile_payload
+            payload = scene_to_payload(self._mw.scene, name="viz")
+            ncls = payload.get("metadata", {}).get("num_classes")
+            cg = compile_payload(payload, num_classes=ncls)
+            shapes_by_id = getattr(cg.model, "shapes_by_id", {}) or {}
+            md = getattr(cg.model, "modules_dict", {})
+            modules_by_id = dict(md) if hasattr(md, "keys") else {}
+        except Exception:
+            pass
+
+        def _introspect(mod):
+            """Retourne (params, neurons, subs[list str])."""
+            import torch.nn as nn
+            if mod is None:
+                return 0, 0, []
+            try:
+                params = sum(p.numel() for p in mod.parameters())
+            except Exception:
+                params = 0
+            subs, neurons = [], 0
+            try:
+                for sm in mod.modules():
+                    if isinstance(sm, nn.Linear):
+                        subs.append(f"Linear {sm.in_features}→{sm.out_features}")
+                        neurons = sm.out_features
+                    elif isinstance(sm, nn.Conv2d):
+                        subs.append(
+                            f"Conv2d {sm.in_channels}→{sm.out_channels} "
+                            f"k{sm.kernel_size[0]}")
+                        neurons = sm.out_channels
+                    elif isinstance(sm, nn.Conv1d):
+                        subs.append(
+                            f"Conv1d {sm.in_channels}→{sm.out_channels}")
+                        neurons = sm.out_channels
+                    elif isinstance(sm, (nn.LayerNorm, nn.BatchNorm1d,
+                                            nn.BatchNorm2d, nn.GroupNorm)):
+                        subs.append(type(sm).__name__)
+                    elif isinstance(sm, nn.MultiheadAttention):
+                        subs.append(f"MHA dim{sm.embed_dim} h{sm.num_heads}")
+                    elif isinstance(sm, nn.Embedding):
+                        subs.append(
+                            f"Embedding {sm.num_embeddings}×{sm.embedding_dim}")
+            except Exception:
+                pass
+            return params, neurons, subs[:8]
+
+        def _fmt_shape(s):
+            if isinstance(s, tuple):
+                if s and isinstance(s[0], tuple):
+                    return " | ".join("×".join(map(str, t)) for t in s)
+                return "×".join(map(str, s))
+            return str(s)
+
         layers = []
         for n in ordered:
             spec = n.spec
             p = n.params
-            # taille heuristique depuis params
-            size = 1
-            for key in ("neurons", "channels", "out_features", "hidden_dim",
-                          "out_dim", "features", "d_model"):
-                if key in p:
-                    try:
-                        size = int(p[key])
-                        break
-                    except Exception:
-                        pass
-            kind = CAT_COLOR.get(spec.category, "proj")
-            label = spec.title
-            sub = ""
-            # param résumé court
-            for key in ("neurons", "channels", "kernel", "activation",
-                          "out_dim", "hidden_dim"):
-                if key in p:
-                    sub += f"{key}={p[key]} "
+            mod = modules_by_id.get(n.id)
+            params, neurons, subs = _introspect(mod)
+            out_shape = shapes_by_id.get(n.id)
+            # taille : params réels si dispo, sinon heuristique
+            if params > 0:
+                size = params
+            else:
+                size = 1
+                for key in ("neurons", "channels", "out_features",
+                              "hidden_dim", "out_dim", "features", "d_model"):
+                    if key in p:
+                        try:
+                            size = int(p[key]); break
+                        except Exception:
+                            pass
+            # sub résumé : sous-couches OU params
+            if subs:
+                sub = " · ".join(subs[:3])
+            else:
+                sub = " ".join(f"{k}={p[k]}" for k in
+                                 ("neurons", "channels", "kernel", "activation")
+                                 if k in p)
             layers.append({
                 "id": n.id,
                 "type": spec.name,
-                "label": label,
+                "label": spec.title,
                 "sub": sub.strip(),
                 "category": spec.category,
-                "kind": kind,
-                "size": max(1, min(size, 512)),
+                "kind": CAT_COLOR.get(spec.category, "proj"),
+                "size": int(max(1, size)),
+                "params": int(params),
+                "neurons": int(neurons),
+                "subs": subs,
+                "outShape": _fmt_shape(out_shape) if out_shape else "",
+                "role": getattr(spec, "role", ""),
+                "func": getattr(spec, "function", ""),
                 "nIn": len(incoming.get(n.id, [])) if isinstance(incoming, dict) else 0,
             })
         name = "ARK scène"
@@ -633,7 +708,9 @@ class ArkBridge(QObject):
             name = self._mw.tabs.tabText(self._mw.tabs.currentIndex())
         except Exception:
             pass
-        return {"generic": True, "name": name, "layers": layers}
+        total_params = sum(l["params"] for l in layers)
+        return {"generic": True, "name": name, "layers": layers,
+                "totalParams": total_params}
 
     # ============================================================
     # Workflow lifecycle (Phase 73)
