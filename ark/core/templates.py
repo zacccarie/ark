@@ -7,6 +7,8 @@ TEMPLATES_LIST = [
     ("mlp_mnist", "MLP MNIST (image → 2× dense → 10)"),
     ("mlp_mnist_demo",
      "MLP MNIST Demo ★ (perceptron 784→128→64→10 + top-K + probas)"),
+    ("mnist_recognize",
+     "MNIST Recognize ★ CONCRET (glyphe → compile → chiffre reconnu)"),
     ("cnn_cifar", "CNN CIFAR-10 (conv×2 → dense → 10)"),
     ("resnet_block", "ResNet block (conv+bn+conv+bn+residual)"),
     ("transformer_mini", "Transformer mini (text → 2× transformer block)"),
@@ -110,6 +112,32 @@ def template_mlp_mnist_demo() -> dict:
                   num_classes=10,
                   tags=["template", "mlp", "perceptron", "mnist",
                         "from-scratch", "didactique"])
+
+
+def template_mnist_recognize() -> dict:
+    """Phase 74 : preuve concrète — vrai glyphe → compile → chiffre reconnu.
+
+    mnist_sample (vrai chiffre) → mnist_recognizer (MLP entraîné)
+      → top_k_predictions (chiffre + confiance)
+    mnist_sample → image_viewer (affiche le glyphe)
+
+    Appuie Compile : le modèle sort le chiffre reconnu en output.
+    """
+    samp = _node("mnist_sample", 0, 220, {"index": 0})
+    rec = _node("mnist_recognizer", 300, 220,
+                  {"auto_train": True, "epochs": 3})
+    topk = _node("top_k_predictions", 620, 140,
+                   {"title": "Chiffre reconnu", "k": 3,
+                    "labels": "0,1,2,3,4,5,6,7,8,9"})
+    iv = _node("image_viewer", 300, 420, {"title": "Glyphe entrée"})
+    conns = [
+        _conn(samp, rec), _conn(rec, topk), _conn(samp, iv),
+    ]
+    return _wrap("MNIST Recognize (preuve concrète)",
+                  [samp, rec, topk, iv], conns,
+                  num_classes=10,
+                  tags=["template", "mnist", "demo", "concret",
+                        "recognition"])
 
 
 def template_cnn_cifar() -> dict:
@@ -539,6 +567,7 @@ def template_img2img_style() -> dict:
 _BUILDERS = {
     "mlp_mnist": template_mlp_mnist,
     "mlp_mnist_demo": template_mlp_mnist_demo,
+    "mnist_recognize": template_mnist_recognize,
     "cnn_cifar": template_cnn_cifar,
     "resnet_block": template_resnet_block,
     "transformer_mini": template_transformer_mini,

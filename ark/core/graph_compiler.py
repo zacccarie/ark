@@ -707,6 +707,18 @@ def _register_diffusion():
 _register_diffusion()
 
 
+# MNIST demo (Phase 74)
+def _register_mnist_demo():
+    try:
+        from ark.core.mnist_demo_nodes import register_mnist_demo_handlers
+        register_mnist_demo_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] mnist demo handlers failed: {e}", file=sys.stderr)
+
+_register_mnist_demo()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
@@ -907,6 +919,8 @@ def compile_scene(scene, num_classes: int | None = None,
         "musicgen_audio", "bark_audio", "text2video_diffusion",
         # Phase 60 : diffusion samplers (no incoming required)
         "ddim_sampler",
+        # Phase 74 : mnist sample source
+        "mnist_sample",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES
