@@ -27,9 +27,9 @@ export function ArchitectPanel() {
     (async () => {
       const b = await getBridge();
       setBridge(b);
-      const provs: Provider[] = await b.architect_providers();
+      const provs: Provider[] = JSON.parse(await b.architect_providers());
       setProviders(provs);
-      const cfg = await b.architect_get_config();
+      const cfg = JSON.parse(await b.architect_get_config());
       setProvider(cfg.provider);
       setModel(cfg.model);
       setKeyConfigured(!!cfg.secrets_present?.[cfg.provider]);
@@ -51,11 +51,13 @@ export function ArchitectPanel() {
         b.architect_done.connect(() => setStreaming(false));
       }
       if (b.architect_arch_proposed?.connect) {
-        b.architect_arch_proposed.connect((arch: any) => setPendingArch(arch));
+        b.architect_arch_proposed.connect((s: string) =>
+          setPendingArch(JSON.parse(s))
+        );
       }
       if (b.architect_actions_proposed?.connect) {
-        b.architect_actions_proposed.connect((acts: any[]) =>
-          setPendingActions(acts)
+        b.architect_actions_proposed.connect((s: string) =>
+          setPendingActions(JSON.parse(s))
         );
       }
     })();
@@ -80,13 +82,16 @@ export function ArchitectPanel() {
 
   const apply = () => {
     if (!pendingArch || !bridge) return;
-    bridge.architect_apply_arch?.(pendingArch);
+    bridge.architect_apply_arch?.(JSON.stringify(pendingArch));
     setPendingArch(null);
   };
 
   const applyActions = async () => {
     if (!pendingActions || !bridge) return;
-    const res = await bridge.architect_apply_actions?.(pendingActions);
+    const resStr = await bridge.architect_apply_actions?.(
+      JSON.stringify(pendingActions)
+    );
+    const res = resStr ? JSON.parse(resStr) : null;
     setPendingActions(null);
     if (res) {
       setMsgs((m) => [

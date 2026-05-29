@@ -37,10 +37,12 @@ export function InspectorPanel() {
       const b = await getBridge();
       setBridge(b);
       if (b.selection_changed && b.selection_changed.connect) {
-        b.selection_changed.connect((nd: NodeData | null) => setNode(nd));
+        b.selection_changed.connect((s: string) => {
+          setNode(s ? (JSON.parse(s) as NodeData) : null);
+        });
       }
       const cur = await b.get_selected_node?.();
-      if (cur) setNode(cur);
+      if (cur) setNode(JSON.parse(cur) as NodeData);
     })();
   }, []);
 

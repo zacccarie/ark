@@ -19,8 +19,9 @@ class ArkBridge(QObject):
     Signals JS-side subscribed via `bridge.signalName.connect(cb)`.
     """
 
-    # Signals
-    selection_changed = Signal(object)   # node data dict or null
+    # Signals — dicts passed as JSON strings (QWebChannel dict-convert is
+    # version-fragile: "_pythonToCppCopy: Cannot copy-convert dict to C++").
+    selection_changed = Signal(str)       # JSON node data or ""
     log_appended = Signal(str)            # one log line
     template_loaded = Signal(str)         # template name
     compile_progress = Signal(float, str)  # 0..1, state
@@ -28,8 +29,8 @@ class ArkBridge(QObject):
     # Architect signals
     architect_chunk = Signal(str)        # streamed token
     architect_done = Signal(str)          # full final message
-    architect_arch_proposed = Signal(object)  # parsed dict
-    architect_actions_proposed = Signal(object)  # list of ops
+    architect_arch_proposed = Signal(str)  # JSON arch
+    architect_actions_proposed = Signal(str)  # JSON list of ops
 
     def __init__(self, main_window=None, parent=None):
         super().__init__(parent)
@@ -60,15 +61,16 @@ class ArkBridge(QObject):
     # Inspector
     # ============================================================
 
-    @Slot(result=object)
+    @Slot(result=str)
     def get_selected_node(self):
+        import json as _json
         if self._mw is None or not hasattr(self._mw, "scene"):
-            return None
+            return ""
         sel = [it for it in self._mw.scene.selectedItems()
                 if hasattr(it, "spec")]
         if not sel:
-            return None
-        return self._serialize_node(sel[0])
+            return ""
+        return _json.dumps(self._serialize_node(sel[0]))
 
     def _serialize_node(self, node) -> dict:
         spec = node.spec
@@ -298,22 +300,25 @@ class ArkBridge(QObject):
             self._architect = ArchitectAgent()
         return self._architect
 
-    @Slot(result=list)
+    @Slot(result=str)
     def architect_providers(self):
+        import json as _json
         from ark.core.llm_providers import available_providers, DEFAULT_MODELS
-        return [{"name": p, "default_model": DEFAULT_MODELS.get(p, "")}
-                for p in available_providers()]
+        return _json.dumps(
+            [{"name": p, "default_model": DEFAULT_MODELS.get(p, "")}
+             for p in available_providers()])
 
-    @Slot(result=object)
+    @Slot(result=str)
     def architect_get_config(self):
+        import json as _json
         from ark.core.llm_providers import load_secrets
         agent = self._architect_instance()
-        return {
+        return _json.dumps({
             "provider": agent.provider_name,
             "model": agent.model,
             "secrets_present": {k: bool(v.get("api_key") or v.get("base_url"))
                                   for k, v in load_secrets().items()},
-        }
+        })
 
     @Slot(str, str, str)
     def architect_set_provider(self, provider: str, model: str, api_key: str):
@@ -377,13 +382,14 @@ class ArkBridge(QObject):
         self._arch_thread.start()
 
     def _on_architect_done(self, full: str):
+        import json as _json
         from ark.core.architect_agent import extract_arch_json, extract_actions
         arch = extract_arch_json(full)
         if arch is not None:
-            self.architect_arch_proposed.emit(arch)
+            self.architect_arch_proposed.emit(_json.dumps(arch))
         acts = extract_actions(full)
         if acts is not None:
-            self.architect_actions_proposed.emit(acts)
+            self.architect_actions_proposed.emit(_json.dumps(acts))
         self.architect_done.emit(full)
         try:
             self._arch_thread.quit()
@@ -391,27 +397,34 @@ class ArkBridge(QObject):
         except Exception:
             pass
 
-    @Slot("QVariant")
-    def architect_apply_arch(self, arch: dict):
-        """Charge l'arch proposée comme nouveau tab."""
+    @Slot(str)
+    def architect_apply_arch(self, arch_json: str):
+        """Charge l'arch proposée comme nouveau tab. Input = JSON string."""
+        import json as _json
         if self._mw is None:
             return
         try:
+            arch = _json.loads(arch_json) if isinstance(arch_json, str) else arch_json
             name = arch.get("name", "Architect")
             if hasattr(self._mw, "tabs"):
                 self._mw.tabs.new_project(name, payload=arch)
         except Exception as e:
             self.emit_log(f"[architect apply error] {e}")
 
-    @Slot("QVariant", result=object)
-    def architect_apply_actions(self, actions: list):
-        """Phase 66 : applique liste d'ops sur scène courante."""
+    @Slot(str, result=str)
+    def architect_apply_actions(self, actions_json: str):
+        """Phase 66 : applique liste d'ops sur scène courante. JSON in/out."""
+        import json as _json
+        try:
+            actions = _json.loads(actions_json) if isinstance(actions_json, str) else actions_json
+        except Exception as e:
+            return _json.dumps({"ok": 0, "fail": 0, "errors": [f"bad json: {e}"]})
         if self._mw is None:
-            return {"ok": 0, "fail": 0, "errors": ["no main window"]}
+            return _json.dumps({"ok": 0, "fail": 0, "errors": ["no main window"]})
         scene = getattr(self._mw, "scene", None)
         view = getattr(self._mw, "view", None)
         if scene is None:
-            return {"ok": 0, "fail": 0, "errors": ["no scene"]}
+            return _json.dumps({"ok": 0, "fail": 0, "errors": ["no scene"]})
         ok, fail, errors = 0, 0, []
         # ID alias map (LLM-provided ids → real node ids after creation)
         id_map: dict[str, str] = {}
@@ -508,29 +521,31 @@ class ArkBridge(QObject):
                 view.viewport().update()
             except Exception:
                 pass
-        return {"ok": ok, "fail": fail, "errors": errors}
+        return _json.dumps({"ok": ok, "fail": fail, "errors": errors})
 
-    @Slot(result=object)
+    @Slot(result=str)
     def architect_get_scene_json(self):
         """Renvoie scene actuelle sérialisée pour debug/inspection LLM."""
+        import json as _json
         if self._mw is None or not hasattr(self._mw, "scene"):
-            return {}
+            return "{}"
         try:
             from ark.core.format import scene_to_payload
-            return scene_to_payload(self._mw.scene, name="current")
+            return _json.dumps(scene_to_payload(self._mw.scene, name="current"))
         except Exception:
-            return {}
+            return "{}"
 
     # ============================================================
     # Lifecycle hooks (called by MainWindow)
     # ============================================================
 
     def emit_selection(self, node):
+        import json as _json
         try:
             data = self._serialize_node(node) if node else None
-            self.selection_changed.emit(data)
+            self.selection_changed.emit(_json.dumps(data) if data else "")
         except Exception:
-            self.selection_changed.emit(None)
+            self.selection_changed.emit("")
 
     def emit_log(self, line: str):
         self.log_appended.emit(line)
