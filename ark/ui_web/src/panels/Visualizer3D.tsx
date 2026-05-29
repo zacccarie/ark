@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { getBridge } from "@/lib/bridge";
 import {
   buildGptScene, buildGenericScene, GptConfig, ModuleRef, GenericLayer,
+  ModuleMeta, LEGEND,
 } from "@/lib/gptScene";
 import { buildWalkthrough, Step } from "@/lib/walkthrough";
 import { Box, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
@@ -28,6 +29,10 @@ export function Visualizer3D() {
   const [fromArk, setFromArk] = useState(false);
   const [genericLayers, setGenericLayers] = useState<GenericLayer[] | null>(null);
   const [toast, setToast] = useState<string>("");
+  const [hover, setHover] = useState<
+    { meta: ModuleMeta; x: number; y: number } | null
+  >(null);
+  const [showLegend, setShowLegend] = useState(true);
 
   // ---- Three.js init ----
   useEffect(() => {
@@ -66,12 +71,51 @@ export function Visualizer3D() {
     const onDown = (e: PointerEvent) => {
       dragging = true; px = e.clientX; py = e.clientY;
     };
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
     const onMove = (e: PointerEvent) => {
-      if (!dragging) return;
-      camTarget.theta -= (e.clientX - px) * 0.008;
-      camTarget.phi = Math.max(0.15, Math.min(Math.PI - 0.15,
-        camTarget.phi - (e.clientY - py) * 0.008));
-      px = e.clientX; py = e.clientY;
+      if (dragging) {
+        camTarget.theta -= (e.clientX - px) * 0.008;
+        camTarget.phi = Math.max(0.15, Math.min(Math.PI - 0.15,
+          camTarget.phi - (e.clientY - py) * 0.008));
+        px = e.clientX; py = e.clientY;
+        setHover(null);
+        return;
+      }
+      // Hover raycast (only over canvas)
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top || e.clientY > rect.bottom) {
+        return;
+      }
+      const st = stateRef.current;
+      if (!st.root || !st.modules?.length) return;
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObject(st.root, true);
+      let key: string | null = null;
+      for (const h of hits) {
+        let o: THREE.Object3D | null = h.object;
+        while (o) {
+          if (o.userData && o.userData.moduleKey) {
+            key = o.userData.moduleKey; break;
+          }
+          o = o.parent;
+        }
+        if (key) break;
+      }
+      if (key) {
+        const mod = st.modules.find((m: ModuleRef) => m.key === key);
+        if (mod?.meta) {
+          setHover({ meta: mod.meta, x: e.clientX - rect.left,
+            y: e.clientY - rect.top });
+          renderer.domElement.style.cursor = "pointer";
+          return;
+        }
+      }
+      setHover(null);
+      renderer.domElement.style.cursor = "grab";
     };
     const onUp = () => { dragging = false; };
     const onWheel = (e: WheelEvent) => {
@@ -290,6 +334,69 @@ export function Visualizer3D() {
           {toast}
         </div>
       )}
+
+      {/* Hover tooltip */}
+      {hover && (
+        <div
+          className="absolute z-30 pointer-events-none bg-bg-overlay/95 backdrop-blur border border-border-strong rounded-md shadow-lg px-3 py-2 max-w-[240px]"
+          style={{
+            left: Math.min(hover.x + 14, 9999),
+            top: hover.y + 14,
+            transform:
+              hover.x > 300 ? "translateX(-100%) translateX(-28px)" : "none",
+          }}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <span
+              className="w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: hover.meta.colorHex }}
+            />
+            <span className="text-xs font-bold text-fg">
+              {hover.meta.label}
+            </span>
+          </div>
+          <p className="text-[10px] text-fg-tertiary uppercase tracking-wider mb-1">
+            {hover.meta.category}
+          </p>
+          {hover.meta.info && (
+            <p className="text-[11px] text-fg-secondary leading-snug">
+              {hover.meta.info}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="absolute top-14 right-3 z-20">
+        <button
+          onClick={() => setShowLegend((s) => !s)}
+          className="ark-btn text-[10px] px-2 py-1 mb-1 w-full"
+        >
+          {showLegend ? "Masquer légende" : "Légende"}
+        </button>
+        {showLegend && (
+          <div className="bg-bg-panel/90 backdrop-blur border border-border-subtle rounded-md p-2 space-y-1 w-52">
+            <p className="text-[9px] uppercase tracking-widest text-fg-disabled font-bold mb-1">
+              Couleur = catégorie
+            </p>
+            {LEGEND.map((l) => (
+              <div key={l.hex} className="flex items-center gap-2">
+                <span
+                  className="w-3 h-3 rounded-sm shrink-0"
+                  style={{ backgroundColor: l.hex }}
+                />
+                <span className="text-[10px] text-fg-secondary">
+                  {l.label}
+                </span>
+              </div>
+            ))}
+            <p className="text-[9px] text-fg-disabled mt-1.5 leading-tight border-t border-border-subtle pt-1.5">
+              Taille bloc ∝ dimension (neurones / canaux). Survole un bloc
+              pour le détail.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Didactic card */}
       <div className="absolute bottom-0 left-0 right-0 bg-bg-panel/95 backdrop-blur border-t border-border-subtle p-3 z-10">

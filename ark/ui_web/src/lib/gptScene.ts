@@ -11,12 +11,35 @@ export type GptConfig = {
   name?: string;
 };
 
+export type ModuleMeta = {
+  label: string;
+  category: string;
+  info: string;
+  colorHex: string;
+};
+
 export type ModuleRef = {
   key: string;
   center: THREE.Vector3;
   radius: number;
   meshes: THREE.Object3D[];
+  meta?: ModuleMeta;
 };
+
+// Exported legend (color → meaning) for both modes
+export const LEGEND: { hex: string; label: string }[] = [
+  { hex: "#00FF85", label: "Input / Embedding" },
+  { hex: "#38BDF8", label: "LayerNorm / Normalization" },
+  { hex: "#A78BFA", label: "Attention / Convolution / Diffusion" },
+  { hex: "#FBBF24", label: "Softmax / Activation" },
+  { hex: "#F472B6", label: "MLP / Neural (dense, residual)" },
+  { hex: "#60A5FA", label: "Projection / Optimizer" },
+  { hex: "#E11D2A", label: "Output / Loss / Logits" },
+];
+
+function hex(n: number): string {
+  return "#" + n.toString(16).padStart(6, "0");
+}
 
 const COL = {
   embed: 0x00ff85,
@@ -109,15 +132,43 @@ export function buildGptScene(cfg: GptConfig): {
   const vCells = Math.min(V, 16);
   let y = 0;
   const LAYER_GAP = 16;
-  const add = (key: string, objs: THREE.Object3D[], yc: number) => {
+  const gptMeta = (key: string): ModuleMeta => {
+    if (key === "embed") return { label: "Embedding", category: "Entrée",
+      colorHex: hex(COL.embed),
+      info: `token table ${V}×${C} + position. Texte → vecteurs.` };
+    if (key.startsWith("ln1")) return { label: "Layer Norm 1",
+      category: "Normalisation", colorHex: hex(COL.ln),
+      info: `pre-norm sur ${C} dims avant attention.` };
+    if (key.startsWith("attn")) return { label: "Self-Attention",
+      category: "Attention", colorHex: hex(COL.attn),
+      info: `${H} têtes · Q/K/V dim ${Math.floor(C / H)} · matrice ${T}×${T}.` };
+    if (key.startsWith("softmax")) return { label: "Softmax",
+      category: "Activation", colorHex: hex(COL.softmax),
+      info: `normalise scores Q·Kᵀ/√${Math.floor(C / H)} → poids 0..1.` };
+    if (key.startsWith("ln2")) return { label: "Layer Norm 2",
+      category: "Normalisation", colorHex: hex(COL.ln),
+      info: `pre-norm avant MLP.` };
+    if (key.startsWith("mlp")) return { label: "MLP feed-forward",
+      category: "Neural", colorHex: hex(COL.mlp),
+      info: `${C} → ${4 * C} → ${C} · GELU. Mémoire factuelle.` };
+    if (key === "ln_f") return { label: "Layer Norm final",
+      category: "Normalisation", colorHex: hex(COL.ln), info: "avant sortie." };
+    if (key === "output") return { label: "Logits + Softmax",
+      category: "Sortie", colorHex: hex(COL.output),
+      info: `projection → ${V} vocab → probabilité token suivant.` };
+    return { label: key, category: "GPT", colorHex: hex(COL.proj), info: "" };
+  };
+  const add = (key: string, objs: THREE.Object3D[], _yc: number) => {
     const box = new THREE.Box3();
     objs.forEach((o) => box.expandByObject(o));
     const center = new THREE.Vector3();
     box.getCenter(center);
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
+    const meta = gptMeta(key);
+    objs.forEach((o) => (o.userData.moduleKey = key));
     modules.push({ key, center, radius: Math.max(sphere.radius, 6),
-      meshes: objs });
+      meshes: objs, meta });
   };
 
   // ---- 1. Token + position embedding (bottom) ----
@@ -315,11 +366,20 @@ export function buildGenericScene(layers: GenericLayer[]): {
       g.add(sub);
     }
     g.position.set(x, 0, 0);
+    g.userData.moduleKey = layer.id;
+    mesh.userData.moduleKey = layer.id;
     root.add(g);
 
     const center = new THREE.Vector3(x, 0, 0);
-    modules.push({ key: layer.id, center, radius: Math.max(h, w, d),
-      meshes: [g] });
+    modules.push({
+      key: layer.id, center, radius: Math.max(h, w, d), meshes: [g],
+      meta: {
+        label: layer.label,
+        category: layer.category,
+        colorHex: hex(color),
+        info: `${layer.sub || layer.type} · taille ≈ ${layer.size}`,
+      },
+    });
     prevCenters.push(center);
 
     // connection line to previous
