@@ -31,6 +31,9 @@ class ArkBridge(QObject):
     architect_done = Signal(str)          # full final message
     architect_arch_proposed = Signal(str)  # JSON arch
     architect_actions_proposed = Signal(str)  # JSON list of ops
+    # Modal signals (Phase 68)
+    modal_log = Signal(str)
+    modal_done = Signal(str)  # JSON result
 
     def __init__(self, main_window=None, parent=None):
         super().__init__(parent)
@@ -534,6 +537,100 @@ class ArkBridge(QObject):
             return _json.dumps(scene_to_payload(self._mw.scene, name="current"))
         except Exception:
             return "{}"
+
+    # ============================================================
+    # Modal remote compute (Phase 68)
+    # ============================================================
+
+    @Slot()
+    def raise_compute(self):
+        if self._mw and hasattr(self._mw, "dock_compute"):
+            try:
+                self._mw.dock_compute.setVisible(True)
+                self._mw.dock_compute.raise_()
+            except Exception:
+                pass
+
+    @Slot(result=str)
+    def modal_get_config(self):
+        import json as _json
+        try:
+            from ark.core.modal_backend import (
+                modal_available, token_configured, GPU_CHOICES)
+            return _json.dumps({
+                "available": modal_available(),
+                "token_configured": token_configured(),
+                "gpus": GPU_CHOICES,
+            })
+        except Exception as e:
+            return _json.dumps({"available": False, "token_configured": False,
+                                  "gpus": [], "error": str(e)})
+
+    @Slot(str, str)
+    def modal_set_token(self, token_id: str, token_secret: str):
+        from ark.core.modal_backend import save_token
+        save_token(token_id, token_secret)
+
+    @Slot(str, int, str, str)
+    def modal_train(self, payload_or_empty: str, epochs: int,
+                    gpu: str, dataset: str):
+        """Lance training Modal en QThread. Stream via modal_log,
+        résultat via modal_done. payload_or_empty='' → scène courante."""
+        import json as _json
+        # Build payload from current scene if none provided
+        payload = None
+        if payload_or_empty:
+            try:
+                payload = _json.loads(payload_or_empty)
+            except Exception:
+                payload = None
+        if payload is None:
+            try:
+                from ark.core.format import scene_to_payload
+                payload = scene_to_payload(self._mw.scene, name="Modal Train")
+            except Exception as e:
+                self.modal_done.emit(_json.dumps(
+                    {"ok": False, "error": f"scene serialize: {e}"}))
+                return
+
+        from PySide6.QtCore import QThread, Signal as _S, QObject
+
+        class _Worker(QObject):
+            log_sig = _S(str)
+            done_sig = _S(str)
+
+            def __init__(s, payload, epochs, gpu, dataset):
+                super().__init__()
+                s.payload = payload
+                s.epochs = epochs
+                s.gpu = gpu
+                s.dataset = dataset
+
+            def run(s):
+                import json as __j
+                from ark.core.modal_backend import submit_training
+                res = submit_training(
+                    s.payload, epochs=s.epochs, gpu=s.gpu,
+                    dataset=s.dataset,
+                    on_log=lambda m: s.log_sig.emit(m))
+                s.done_sig.emit(__j.dumps(res))
+
+        self._modal_thread = QThread()
+        self._modal_worker = _Worker(payload, int(epochs), gpu, dataset)
+        self._modal_worker.moveToThread(self._modal_thread)
+        self._modal_worker.log_sig.connect(self.modal_log)
+        self._modal_worker.log_sig.connect(self.emit_log)  # also to terminal
+        self._modal_worker.done_sig.connect(self._on_modal_done)
+        self._modal_thread.started.connect(self._modal_worker.run)
+        self._modal_thread.start()
+
+    def _on_modal_done(self, result_json: str):
+        self.modal_done.emit(result_json)
+        try:
+            self._modal_thread.quit()
+            self._modal_thread.wait(3000)
+        except Exception:
+            pass
 
     # ============================================================
     # Lifecycle hooks (called by MainWindow)

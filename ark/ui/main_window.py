@@ -507,18 +507,23 @@ class MainWindow(QMainWindow):
                     self.dock_inspector = web_docks["inspector"]
                     self.dock_terminal = web_docks["terminal"]
                     self.dock_architect = web_docks["architect"]
+                    self.dock_compute = web_docks["compute"]
                     self.dock_palette.setObjectName("dock_palette")
                     self.dock_inspector.setObjectName("dock_inspector")
                     self.dock_terminal.setObjectName("dock_terminal")
                     self.dock_architect.setObjectName("dock_architect")
+                    self.dock_compute.setObjectName("dock_compute")
                     self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
                                             self.dock_palette)
                     self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                                             self.dock_inspector)
-                    # Architect tabified with Inspector on the right
+                    # Architect + Compute tabified with Inspector on the right
                     self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                                             self.dock_architect)
+                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                                            self.dock_compute)
                     self.tabifyDockWidget(self.dock_inspector, self.dock_architect)
+                    self.tabifyDockWidget(self.dock_architect, self.dock_compute)
                     self.dock_inspector.raise_()
                     self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
                                             self.dock_terminal)

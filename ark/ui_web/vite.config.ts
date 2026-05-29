@@ -21,6 +21,7 @@ export default defineConfig({
         terminal: path.resolve(__dirname, "terminal.html"),
         toolbar: path.resolve(__dirname, "toolbar.html"),
         architect: path.resolve(__dirname, "architect.html"),
+        compute: path.resolve(__dirname, "compute.html"),
       },
     },
   },

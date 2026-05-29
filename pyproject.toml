@@ -20,6 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 ml = ["transformers>=4.40", "diffusers>=0.30", "huggingface-hub>=0.24", "peft>=0.12"]
 viz = ["umap-learn>=0.5", "scikit-learn>=1.5", "plotly>=5.20", "bertviz>=1.4"]
+cloud = ["modal>=1.0"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]

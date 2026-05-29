@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getBridge } from "@/lib/bridge";
 import {
   Play, Square, Boxes, PanelRight, Cog,
-  Maximize2, Map, Grid3x3,
+  Maximize2, Map, Grid3x3, Cloud,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +77,14 @@ export function ToolbarPanel() {
       >
         <Square className="w-3.5 h-3.5 fill-current" />
         Stop
+      </button>
+      <button
+        onClick={() => bridge?.raise_compute?.()}
+        className="ark-btn flex items-center gap-1.5 text-xs"
+        title="Train on Modal (remote GPU)"
+      >
+        <Cloud className="w-3.5 h-3.5" />
+        Modal
       </button>
       <div className="flex-1" />
       <span className="font-mono text-xs text-fg-secondary bg-bg-raised border border-border rounded-sm px-2 py-0.5">
