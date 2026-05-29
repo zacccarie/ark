@@ -683,6 +683,18 @@ def _register_multimodal():
 _register_multimodal()
 
 
+# Multimodal Neural (Phase 59)
+def _register_multimodal_neural():
+    try:
+        from ark.core.multimodal_real_nodes import register_real_multimodal_handlers
+        register_real_multimodal_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] multimodal neural handlers failed: {e}", file=sys.stderr)
+
+_register_multimodal_neural()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
@@ -879,6 +891,8 @@ def compile_scene(scene, num_classes: int | None = None,
         "tiny_llm_corpus", "tiny_llm_generate",
         # Phase 56 : multimodal sources
         "text_to_frame_seq", "text_to_melody",
+        # Phase 59 : neural multimodal sources
+        "musicgen_audio", "bark_audio", "text2video_diffusion",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES

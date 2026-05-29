@@ -630,6 +630,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] multimodal specs failed: {e}", file=sys.stderr)
 
+    # Multimodal Neural (Phase 59) — MusicGen, Bark, Text2Video Diffusion
+    try:
+        from ark.core.multimodal_real_nodes import register_real_multimodal_specs
+        register_real_multimodal_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] multimodal neural specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups

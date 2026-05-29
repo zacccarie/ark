@@ -15,11 +15,16 @@ TEMPLATES_LIST = [
     ("tiny_llm_demo", "TinyLLM (corpus → train → generate, 100k params char-level)"),
     ("metamorph_m1", "Metamorph M1 CriticalGrowNet (target β=-2 SOC)"),
     ("metamorph_m5", "Metamorph M5 DyadicMirror (Mead-Vygotsky)"),
-    # Phase 56 — multimodal
+    # Phase 56 — multimodal procedural
     ("text2video_tiny", "Text2Video Tiny (prompt → procedural frames → .gif)"),
     ("text2audio_tiny", "Text2Audio Tiny (prompt → melody → ADSR synth → .wav)"),
     ("img2text_resnet", "Img2Text ResNet18 (image → top-K → caption)"),
     ("img2img_style", "Img2Img Style (conv pipeline neuronal léger)"),
+    # Phase 59 — REAL neural (slow, downloads models)
+    ("text2audio_musicgen",
+     "Text2Audio MusicGen ★ NEURAL (~1.5GB download, ~30s gen)"),
+    ("text2video_diffusion",
+     "Text2Video Diffusion ★ NEURAL (~4GB download, ~2min gen)"),
 ]
 
 
@@ -373,6 +378,47 @@ def template_img2text_resnet() -> dict:
                         "classification"])
 
 
+def template_text2audio_musicgen() -> dict:
+    """Phase 59 : REAL neural text2audio via MusicGen 300M.
+
+    ~1.5GB download au 1er run. ~30s génération MPS pour 5s d'audio.
+    """
+    txt = _node("text_input", 0, 200,
+                  {"prompt": "uplifting electronic music with synth"})
+    mg = _node("musicgen_audio", 280, 200,
+                 {"model_id": "facebook/musicgen-small",
+                  "duration_s": 5.0, "guidance": 3.0,
+                  "sampling_rate": 32000})
+    ap = _node("audio_player", 580, 200,
+                 {"title": "MusicGen Output", "sample_rate": 32000})
+    aw = _node("audio_writer", 880, 200,
+                 {"output_path": "./output/musicgen.wav",
+                  "sample_rate": 32000})
+    conns = [_conn(txt, mg), _conn(mg, ap), _conn(ap, aw)]
+    return _wrap("Text2Audio MusicGen (Neural)",
+                  [txt, mg, ap, aw], conns,
+                  tags=["template", "audio", "neural", "musicgen"])
+
+
+def template_text2video_diffusion() -> dict:
+    """Phase 59 : REAL neural text2video via ModelScope 1.7B.
+
+    ~4GB download au 1er run. ~2min génération MPS pour 16 frames 256x256.
+    """
+    txt = _node("text_input", 0, 200,
+                  {"prompt": "A panda is eating bamboo on a rock"})
+    t2v = _node("text2video_diffusion", 280, 200,
+                  {"num_frames": 16, "height": 256, "width": 256,
+                   "steps": 25, "guidance": 9.0})
+    vw = _node("video_writer", 580, 200,
+                 {"output_path": "./output/t2v_neural.gif", "fps": 8})
+    iv = _node("image_viewer", 580, 380, {"title": "Last Frame"})
+    conns = [_conn(txt, t2v), _conn(t2v, vw), _conn(t2v, iv)]
+    return _wrap("Text2Video Diffusion (Neural)",
+                  [txt, t2v, vw, iv], conns,
+                  tags=["template", "video", "neural", "diffusion"])
+
+
 def template_img2img_style() -> dict:
     """Phase 56 : load_image → conv2d transform pipeline → save_image.
 
@@ -418,6 +464,9 @@ _BUILDERS = {
     "text2audio_tiny": template_text2audio_tiny,
     "img2text_resnet": template_img2text_resnet,
     "img2img_style": template_img2img_style,
+    # Phase 59 — REAL neural
+    "text2audio_musicgen": template_text2audio_musicgen,
+    "text2video_diffusion": template_text2video_diffusion,
 }
 
 
