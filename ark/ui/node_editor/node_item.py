@@ -209,22 +209,18 @@ class NodeItem(QGraphicsItem):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(T.STATE_TRAINING)))
             painter.drawRect(QRectF(0, 0, bar_w, 3))
-        elif self.status == "ok":
-            # Border accent vert plus marqué (success visible)
-            painter.setPen(QPen(QColor(T.STATE_OK), 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            ok_path = QPainterPath()
-            ok_path.addRoundedRect(QRectF(0, 0, self.width, self.height),
-                                         T.R_MEDIUM, T.R_MEDIUM)
-            painter.drawPath(ok_path)
+        # Phase 60b : pas de bordure verte full pour 'ok' — status dot suffit
+        # (avant : draw 2px green border partout → cluttered vert)
 
-        # Category microlabel
+        # Category microlabel — Phase 60b : moved to bottom-right corner,
+        # was overlapping socket labels at top-right.
         font_micro = QFont("Arial", T.FS_MICRO)
         painter.setFont(font_micro)
-        painter.setPen(QPen(QColor(T.FG_TERTIARY)))
-        painter.drawText(QRectF(8, self.HEADER_H + 2, self.width - 16, 12),
-                         Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
-                         self.spec.category.upper())
+        painter.setPen(QPen(QColor(T.FG_DISABLED)))
+        painter.drawText(
+            QRectF(8, self.height - 14, self.width - 16, 12),
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight,
+            self.spec.category)
 
         # Socket labels
         font_label = QFont("Arial", T.FS_LABEL)

@@ -193,7 +193,7 @@ class ActionBar(QWidget):
         # Mode dropdown
         self.mode_combo = QComboBox(self)
         self.mode_combo.addItems(["Compiler", "Entraîner", "Bench"])
-        self.mode_combo.setFixedWidth(112)
+        self.mode_combo.setFixedWidth(130)
         self.mode_combo.setFixedHeight(28)
         self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
         h.addWidget(self.mode_combo)

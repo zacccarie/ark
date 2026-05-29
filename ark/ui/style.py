@@ -395,14 +395,13 @@ def build_qss() -> str:
     QTabBar::tab {{
         background-color: {T.BG_PANEL};
         color: {T.FG_TERTIARY};
-        padding: {T.S_3}px {T.S_4}px;
+        padding: {T.S_2}px {T.S_3}px;
         border: none;
         border-bottom: 2px solid transparent;
         font-family: {T.FONT_DISPLAY_FAMILY};
         font-size: {T.FS_LABEL}px;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-weight: 700;
+        letter-spacing: 0;
+        font-weight: 600;
         min-width: 80px;
         margin: 0;
     }}
