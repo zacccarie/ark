@@ -16,3 +16,6 @@ vexp.toml
 dist/
 build/
 *.spec
+
+# Phase 58 — github actions yml not pushable from OAuth token without workflow scope
+.github/workflows/
