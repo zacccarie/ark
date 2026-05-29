@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getBridge } from "@/lib/bridge";
 import {
   Play, Square, Boxes, PanelRight, Cog,
-  Maximize2, Map, Grid3x3, Cloud, Box,
+  Maximize2, Map, Grid3x3, Cloud, Box, Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +93,14 @@ export function ToolbarPanel() {
       >
         <Box className="w-3.5 h-3.5" />
         3D
+      </button>
+      <button
+        onClick={() => bridge?.raise_workflow?.()}
+        className="ark-btn flex items-center gap-1.5 text-xs"
+        title="Workflow — étapes conception/train/test/prod"
+      >
+        <Rocket className="w-3.5 h-3.5" />
+        Workflow
       </button>
       <div className="flex-1" />
       <span className="font-mono text-xs text-fg-secondary bg-bg-raised border border-border rounded-sm px-2 py-0.5">

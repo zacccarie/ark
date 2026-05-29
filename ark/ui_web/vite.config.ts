@@ -23,6 +23,7 @@ export default defineConfig({
         architect: path.resolve(__dirname, "architect.html"),
         compute: path.resolve(__dirname, "compute.html"),
         viz3d: path.resolve(__dirname, "viz3d.html"),
+        workflow: path.resolve(__dirname, "workflow.html"),
       },
     },
   },

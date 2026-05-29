@@ -509,6 +509,8 @@ class MainWindow(QMainWindow):
                     self.dock_architect = web_docks["architect"]
                     self.dock_compute = web_docks["compute"]
                     self.dock_viz3d = web_docks["viz3d"]
+                    self.dock_workflow = web_docks["workflow"]
+                    self.dock_workflow.setObjectName("dock_workflow")
                     self.dock_palette.setObjectName("dock_palette")
                     self.dock_inspector.setObjectName("dock_inspector")
                     self.dock_terminal.setObjectName("dock_terminal")
@@ -527,6 +529,9 @@ class MainWindow(QMainWindow):
                     self.tabifyDockWidget(self.dock_inspector, self.dock_architect)
                     self.tabifyDockWidget(self.dock_architect, self.dock_compute)
                     self.tabifyDockWidget(self.dock_compute, self.dock_viz3d)
+                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                                            self.dock_workflow)
+                    self.tabifyDockWidget(self.dock_viz3d, self.dock_workflow)
                     self.dock_inspector.raise_()
                     self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
                                             self.dock_terminal)

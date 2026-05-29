@@ -93,6 +93,7 @@ def build_web_docks(main_window, bridge) -> dict[str, QDockWidget]:
         "architect": (320, 0),
         "compute": (320, 0),
         "viz3d": (480, 360),
+        "workflow": (320, 0),
     }
     for name, title in [
         ("palette", "Palette"),
@@ -101,6 +102,7 @@ def build_web_docks(main_window, bridge) -> dict[str, QDockWidget]:
         ("architect", "Architect"),
         ("compute", "Compute"),
         ("viz3d", "LLM 3D"),
+        ("workflow", "Workflow"),
     ]:
         dock = QDockWidget(title, main_window)
         dock.setObjectName(f"dock_web_{name}")

@@ -635,6 +635,191 @@ class ArkBridge(QObject):
             pass
         return {"generic": True, "name": name, "layers": layers}
 
+    # ============================================================
+    # Workflow lifecycle (Phase 73)
+    # ============================================================
+
+    @Slot(result=str)
+    def workflow_get_state(self):
+        """Analyse scène + état compile/train → phases lifecycle + checklist."""
+        import json as _json
+        from pathlib import Path
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return _json.dumps({"modelType": "unknown", "phases": []})
+        try:
+            nodes = self._mw.scene.nodes()
+        except Exception:
+            nodes = []
+        types = [n.spec.name for n in nodes]
+        cats = [n.spec.category for n in nodes]
+
+        # Détection type de modèle
+        has = lambda *xs: any(t in types for t in xs)
+        if has("tiny_llm_model", "transformer_block", "tiny_llm_generate"):
+            mtype = "llm"
+        elif has("unet_mini", "diffusion_scheduler", "ddim_sampler",
+                    "diffusion_model_loader", "musicgen_audio",
+                    "text2video_diffusion", "text_to_frame_seq"):
+            mtype = "generative"
+        elif has("dyadic_mirror", "self_ref_agent", "world_model",
+                    "critical_grow_net"):
+            mtype = "world"
+        elif has("dense", "conv2d", "imagenet_classifier"):
+            mtype = "classifier"
+        else:
+            mtype = "generic"
+
+        # États
+        n_nodes = len(nodes)
+        has_source = any(c == "Input" for c in cats) or has(
+            "image_input", "tabular_input", "text_input", "tiny_llm_corpus",
+            "torchvision_dataset")
+        has_transform = any(c in ("Neural", "Neural Networks", "Diffusion",
+                                       "Tiny LLM") for c in cats)
+        has_output = has("top_k_predictions", "number_display", "text_viewer",
+                            "image_viewer", "prob_distribution", "save_image",
+                            "audio_writer", "video_writer", "ddim_sampler",
+                            "tiny_llm_generate", "caption_formatter")
+        compiled = getattr(self._mw, "_compiled", None) is not None
+        # Checkpoints (preuve d'entraînement)
+        ck_dirs = [Path.home() / ".ark" / "demo_checkpoints",
+                     Path.home() / ".ark" / "modal_checkpoints",
+                     Path.home() / ".ark" / "tiny_llm"]
+        trained = any(d.exists() and any(d.glob("*.pt")) for d in ck_dirs)
+
+        # Templates de checklist par type
+        DEFS = {
+            "classifier": {
+                "label": "Classifieur (vision/tabulaire)",
+                "metric": "accuracy", "gen": "Inférence (prédire classe)",
+            },
+            "llm": {
+                "label": "LLM / texte génératif",
+                "metric": "perplexité / loss", "gen": "Génération de texte",
+            },
+            "generative": {
+                "label": "Modèle génératif (diffusion/audio/vidéo)",
+                "metric": "FID / loss reconstruction",
+                "gen": "Génération (échantillonnage)",
+            },
+            "world": {
+                "label": "World model / agent",
+                "metric": "reward / prédiction d'état",
+                "gen": "Rollout / simulation",
+            },
+            "generic": {
+                "label": "Modèle générique",
+                "metric": "loss", "gen": "Inférence",
+            },
+        }
+        d = DEFS.get(mtype, DEFS["generic"])
+
+        phases = [
+            {
+                "key": "conception", "title": "1 · Conception",
+                "icon": "blocks",
+                "done": has_source and has_transform,
+                "current": not (has_source and has_transform),
+                "desc": "Assembler le graphe : source de données → couches de "
+                          "transformation → sortie.",
+                "checks": [
+                    {"label": "Node source / données en entrée",
+                     "done": has_source},
+                    {"label": "Couches de transformation (dense/conv/...)",
+                     "done": has_transform},
+                    {"label": "Node de sortie / lecture résultat",
+                     "done": has_output},
+                ],
+                "action": None,
+            },
+            {
+                "key": "compile", "title": "2 · Compilation",
+                "icon": "cpu",
+                "done": compiled,
+                "current": (has_source and has_transform) and not compiled,
+                "desc": "Vérifie que les formes (shapes) s'enchaînent sans "
+                          "erreur. Construit le graphe PyTorch exécutable.",
+                "checks": [
+                    {"label": "Graphe compile sans erreur", "done": compiled},
+                    {"label": "Formes d'entrée/sortie cohérentes",
+                     "done": compiled},
+                ],
+                "action": "compile",
+            },
+            {
+                "key": "train", "title": "3 · Entraînement",
+                "icon": "activity",
+                "done": trained,
+                "current": compiled and not trained,
+                "desc": f"Ajuster les poids sur données réelles. Surveiller "
+                          f"que la {d['metric']} s'améliore. Local ou Modal (GPU).",
+                "checks": [
+                    {"label": "Optimizer + loss présents OU dataset chargé",
+                     "done": has("adam", "sgd", "cross_entropy", "mse_loss")
+                     or has("torchvision_dataset", "tiny_llm_corpus")},
+                    {"label": "Entraînement lancé (checkpoint produit)",
+                     "done": trained},
+                    {"label": f"{d['metric']} diminue / converge",
+                     "done": trained},
+                ],
+                "action": "train",
+            },
+            {
+                "key": "validation", "title": "4 · Validation / Test",
+                "icon": "check-circle",
+                "done": False,
+                "current": trained,
+                "desc": "Évaluer sur données JAMAIS vues (test set). Mesurer "
+                          f"la {d['metric']} de généralisation. Détecter "
+                          "sur-apprentissage (train ✓ mais test ✗).",
+                "checks": [
+                    {"label": "Évaluer sur jeu de test séparé", "done": False},
+                    {"label": "Métrique test ≈ métrique entraînement",
+                     "done": False},
+                    {"label": "Pas d'overfitting flagrant", "done": False},
+                ],
+                "action": "compile",
+            },
+            {
+                "key": "production", "title": f"5 · {d['gen']}",
+                "icon": "rocket",
+                "done": False,
+                "current": False,
+                "desc": "Utiliser le modèle entraîné sur de nouvelles entrées. "
+                          "Exporter (.py/ONNX) pour déployer.",
+                "checks": [
+                    {"label": "Sortie cohérente sur nouvelles données",
+                     "done": False},
+                    {"label": "Export (.py / ONNX / checkpoint)", "done": trained},
+                ],
+                "action": None,
+            },
+        ]
+        # current = première phase non-done
+        cur_set = False
+        for ph in phases:
+            ph["current"] = False
+        for ph in phases:
+            if not ph["done"] and not cur_set:
+                ph["current"] = True
+                cur_set = True
+
+        return _json.dumps({
+            "modelType": mtype,
+            "modelTypeLabel": d["label"],
+            "nNodes": n_nodes,
+            "phases": phases,
+        })
+
+    @Slot()
+    def raise_workflow(self):
+        if self._mw and hasattr(self._mw, "dock_workflow"):
+            try:
+                self._mw.dock_workflow.setVisible(True)
+                self._mw.dock_workflow.raise_()
+            except Exception:
+                pass
+
     @Slot()
     def raise_viz3d(self):
         if self._mw and hasattr(self._mw, "dock_viz3d"):
