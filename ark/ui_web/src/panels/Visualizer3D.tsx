@@ -255,7 +255,8 @@ export function Visualizer3D() {
             const p = PRESETS[e.target.value];
             if (p) {
               setPresetName(e.target.value);
-              setConfig(p);
+              setGenericLayers(null); // exit generic mode → rebuild GPT
+              setConfig({ ...p }); // new ref forces effect even if same preset
               setFromArk(false);
             }
           }}
