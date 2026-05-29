@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: theme('colors.bg.panel');
+    color: theme('colors.fg.DEFAULT');
+    font-family: theme('fontFamily.sans');
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: theme('colors.bg.deep'); }
+  ::-webkit-scrollbar-thumb { background: theme('colors.border.DEFAULT'); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: theme('colors.border.strong'); }
+}
+
+@layer components {
+  .ark-card {
+    @apply bg-bg-raised border border-border rounded-md shadow-sm;
+  }
+  .ark-btn {
+    @apply px-3 py-1.5 text-sm font-medium rounded-sm transition-colors duration-fast
+           border border-border bg-transparent text-fg-secondary
+           hover:bg-bg-overlay hover:text-fg;
+  }
+  .ark-btn-primary {
+    @apply px-4 py-1.5 text-sm font-semibold rounded-sm transition-colors duration-fast
+           border border-accent-blue bg-accent-blue text-white
+           hover:bg-blue-600;
+  }
+  .ark-input {
+    @apply w-full px-2 py-1 text-sm rounded-sm bg-bg-input border border-border
+           text-fg focus:outline-none focus:border-primary;
+  }
+}

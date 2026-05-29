@@ -458,6 +458,43 @@ class MainWindow(QMainWindow):
     # Docks
     # ------------------------------------------------------------
     def _build_docks(self):
+        import os as _os
+        # Phase 61 : opt-in React WebEngine UI via ARK_WEB=1
+        self._web_ui = False
+        if _os.environ.get("ARK_WEB") == "1":
+            try:
+                from ark.ui.web_bridge import ArkBridge
+                from ark.ui.web_panels import build_web_docks, is_web_ui_available
+                if is_web_ui_available():
+                    self._web_bridge = ArkBridge(main_window=self, parent=self)
+                    web_docks = build_web_docks(self, self._web_bridge)
+                    self.dock_palette = web_docks["palette"]
+                    self.dock_inspector = web_docks["inspector"]
+                    self.dock_terminal = web_docks["terminal"]
+                    self.dock_palette.setObjectName("dock_palette")
+                    self.dock_inspector.setObjectName("dock_inspector")
+                    self.dock_terminal.setObjectName("dock_terminal")
+                    self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
+                                            self.dock_palette)
+                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                                            self.dock_inspector)
+                    self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                                            self.dock_terminal)
+                    # Compatibility shims for the rest of the codebase
+                    self.palette = None
+                    self.inspector = None
+                    self.terminal = _TerminalShim(self._web_bridge)
+                    self._web_ui = True
+                    return
+                else:
+                    import sys
+                    print("[ARK_WEB] ui_web/dist not built. Falling back to Qt UI.",
+                              file=sys.stderr)
+            except Exception as e:
+                import sys
+                print(f"[ARK_WEB] init failed: {e}", file=sys.stderr)
+
+        # Default Qt-native docks
         # Palette gauche
         self.palette = PalettePanel(registry=self._registry, parent=self)
         self.palette.node_double_clicked.connect(self._on_palette_node_dropped)
@@ -1106,3 +1143,28 @@ class MainWindow(QMainWindow):
             self.terminal.append_log(f"[export.onnx] {out}")
         except Exception as e:
             QMessageBox.critical(self, "Erreur export ONNX", str(e))
+
+
+# ============================================================
+# Phase 61 : shims for Qt-side code that still calls terminal/append_log/etc
+# when running in ARK_WEB mode (no Qt TerminalPanel exists).
+# ============================================================
+
+class _TerminalShim:
+    """Forwards append_log to the QWebChannel bridge so React TerminalPanel
+    receives the line. Other terminal methods are noops."""
+
+    def __init__(self, bridge):
+        self._bridge = bridge
+
+    def append_log(self, msg: str):
+        try:
+            self._bridge.emit_log(msg)
+        except Exception:
+            pass
+
+    # noops for legacy API surface
+    def show(self): pass
+    def hide(self): pass
+    def setVisible(self, v: bool): pass
+    def isVisible(self): return True

@@ -19,3 +19,9 @@ build/
 
 # Phase 58 — github actions yml not pushable from OAuth token without workflow scope
 .github/workflows/
+
+# Phase 61 — React build artifacts
+ark/ui_web/node_modules/
+ark/ui_web/dist/
+ark/ui_web/src/**/*.js
+ark/ui_web/*.tsbuildinfo
