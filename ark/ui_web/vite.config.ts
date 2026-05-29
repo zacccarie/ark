@@ -20,6 +20,7 @@ export default defineConfig({
         inspector: path.resolve(__dirname, "inspector.html"),
         terminal: path.resolve(__dirname, "terminal.html"),
         toolbar: path.resolve(__dirname, "toolbar.html"),
+        architect: path.resolve(__dirname, "architect.html"),
       },
     },
   },

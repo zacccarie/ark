@@ -25,9 +25,16 @@ class ArkBridge(QObject):
     template_loaded = Signal(str)         # template name
     compile_progress = Signal(float, str)  # 0..1, state
 
+    # Architect signals
+    architect_chunk = Signal(str)        # streamed token
+    architect_done = Signal(str)          # full final message
+    architect_arch_proposed = Signal(object)  # parsed dict
+
     def __init__(self, main_window=None, parent=None):
         super().__init__(parent)
         self._mw = main_window  # weakref-ish, set lazy
+        # Phase 65 : lazy architect agent
+        self._architect = None
 
     # ============================================================
     # Palette
@@ -279,6 +286,118 @@ class ArkBridge(QObject):
         if dest:
             import shutil
             shutil.copy2(src, dest)
+
+    # ============================================================
+    # Architect agent (Phase 65)
+    # ============================================================
+
+    def _architect_instance(self):
+        if self._architect is None:
+            from ark.core.architect_agent import ArchitectAgent
+            self._architect = ArchitectAgent()
+        return self._architect
+
+    @Slot(result=list)
+    def architect_providers(self):
+        from ark.core.llm_providers import available_providers, DEFAULT_MODELS
+        return [{"name": p, "default_model": DEFAULT_MODELS.get(p, "")}
+                for p in available_providers()]
+
+    @Slot(result=object)
+    def architect_get_config(self):
+        from ark.core.llm_providers import load_secrets
+        agent = self._architect_instance()
+        return {
+            "provider": agent.provider_name,
+            "model": agent.model,
+            "secrets_present": {k: bool(v.get("api_key") or v.get("base_url"))
+                                  for k, v in load_secrets().items()},
+        }
+
+    @Slot(str, str, str)
+    def architect_set_provider(self, provider: str, model: str, api_key: str):
+        from ark.core.llm_providers import load_secrets, save_secrets
+        agent = self._architect_instance()
+        if api_key:
+            secrets = load_secrets()
+            secrets.setdefault(provider, {})
+            if provider == "ollama":
+                secrets[provider]["base_url"] = api_key
+            else:
+                secrets[provider]["api_key"] = api_key
+            save_secrets(secrets)
+        agent.set_provider(provider, model or None)
+
+    @Slot()
+    def architect_reset(self):
+        agent = self._architect_instance()
+        agent.reset()
+
+    @Slot(str)
+    def architect_chat(self, user_msg: str):
+        """Stream response. Emits architect_chunk(str) per token,
+        architect_done(full) at end, architect_arch_proposed(dict) if
+        ark-arch-v1 block detected."""
+        from ark.core.architect_agent import summarize_scene, extract_arch_json
+        agent = self._architect_instance()
+        scene = getattr(self._mw, "scene", None)
+        summary = summarize_scene(scene)
+        # Stream in background thread
+        from PySide6.QtCore import QThread, Signal as _S, QObject
+        class _Worker(QObject):
+            chunk_sig = _S(str)
+            done_sig = _S(str)
+
+            def __init__(s, agent, msg, summary):
+                super().__init__()
+                s.agent = agent
+                s.msg = msg
+                s.summary = summary
+
+            def run(s):
+                try:
+                    full = []
+                    for chunk in s.agent.chat(s.msg, scene_summary=s.summary,
+                                                    stream=True):
+                        full.append(chunk)
+                        s.chunk_sig.emit(chunk)
+                    s.done_sig.emit("".join(full))
+                except Exception as e:
+                    err = f"[architect error] {e}"
+                    s.chunk_sig.emit(err)
+                    s.done_sig.emit(err)
+
+        self._arch_thread = QThread()
+        self._arch_worker = _Worker(agent, user_msg, summary)
+        self._arch_worker.moveToThread(self._arch_thread)
+        self._arch_worker.chunk_sig.connect(self.architect_chunk)
+        self._arch_worker.done_sig.connect(self._on_architect_done)
+        self._arch_thread.started.connect(self._arch_worker.run)
+        self._arch_thread.start()
+
+    def _on_architect_done(self, full: str):
+        from ark.core.architect_agent import extract_arch_json
+        arch = extract_arch_json(full)
+        if arch is not None:
+            self.architect_arch_proposed.emit(arch)
+        self.architect_done.emit(full)
+        try:
+            self._arch_thread.quit()
+            self._arch_thread.wait(2000)
+        except Exception:
+            pass
+
+    @Slot("QVariant")
+    def architect_apply_arch(self, arch: dict):
+        """Charge l'arch proposée comme nouveau tab."""
+        if self._mw is None:
+            return
+        try:
+            name = arch.get("name", "Architect")
+            if hasattr(self._mw, "tabs"):
+                self._mw.tabs.new_project(name, payload=arch)
+        except Exception as e:
+            self.emit_log(f"[architect apply error] {e}")
 
     # ============================================================
     # Lifecycle hooks (called by MainWindow)

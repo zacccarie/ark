@@ -75,11 +75,13 @@ def build_web_docks(main_window, bridge) -> dict[str, QDockWidget]:
         "palette": (260, 0),       # min width, min height
         "inspector": (300, 0),
         "terminal": (0, 180),
+        "architect": (320, 0),
     }
     for name, title in [
         ("palette", "Palette"),
         ("inspector", "Inspector"),
         ("terminal", "Terminal"),
+        ("architect", "Architect"),
     ]:
         dock = QDockWidget(title, main_window)
         dock.setObjectName(f"dock_web_{name}")
