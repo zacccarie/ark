@@ -264,3 +264,80 @@ export function buildGptScene(cfg: GptConfig): {
 
   return { root, modules, height: y };
 }
+
+// ============================================================
+// Generic architecture (any ARK model: CNN, ResNet, MLP, diffusion…)
+// ============================================================
+
+export type GenericLayer = {
+  id: string;
+  type: string;
+  label: string;
+  sub: string;
+  category: string;
+  kind: keyof typeof COL;
+  size: number;
+  nIn: number;
+};
+
+export function buildGenericScene(layers: GenericLayer[]): {
+  root: THREE.Group;
+  modules: ModuleRef[];
+  height: number;
+} {
+  const root = new THREE.Group();
+  const modules: ModuleRef[] = [];
+  if (!layers.length) return { root, modules, height: 0 };
+
+  // Horizontal flow left→right. Block size encodes `size` (log-scaled).
+  const GAP = 9;
+  let x = 0;
+  const prevCenters: THREE.Vector3[] = [];
+  const maxSize = Math.max(...layers.map((l) => l.size));
+
+  layers.forEach((layer, i) => {
+    const g = new THREE.Group();
+    const norm = Math.log2(layer.size + 1) / Math.log2(maxSize + 1 || 2);
+    const h = 2 + norm * 10; // height encodes width/channels
+    const w = 5;
+    const d = 2 + norm * 8;
+    const color = COL[layer.kind] ?? COL.proj;
+    const mesh = block(w, h, d, color, 0.92);
+    g.add(mesh);
+    const lbl = labelSprite(layer.label, "#E4E4E7");
+    lbl.position.set(0, h / 2 + 1.6, 0);
+    lbl.scale.set(10, 2.5, 1);
+    g.add(lbl);
+    if (layer.sub) {
+      const sub = labelSprite(layer.sub, "#B8B8C0");
+      sub.position.set(0, h / 2 + 0.2, 0);
+      sub.scale.set(9, 1.8, 1);
+      g.add(sub);
+    }
+    g.position.set(x, 0, 0);
+    root.add(g);
+
+    const center = new THREE.Vector3(x, 0, 0);
+    modules.push({ key: layer.id, center, radius: Math.max(h, w, d),
+      meshes: [g] });
+    prevCenters.push(center);
+
+    // connection line to previous
+    if (i > 0) {
+      const prev = prevCenters[i - 1];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(prev.x + w / 2, 0, 0),
+        new THREE.Vector3(x - w / 2, 0, 0),
+      ]);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x52525b, transparent: true, opacity: 0.6 });
+      root.add(new THREE.Line(lineGeo, lineMat));
+    }
+    x += GAP;
+  });
+
+  // center horizontally
+  root.position.x = -(x - GAP) / 2;
+  return { root, modules, height: x };
+}
+

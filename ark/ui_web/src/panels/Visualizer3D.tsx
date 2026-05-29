@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { getBridge } from "@/lib/bridge";
-import { buildGptScene, GptConfig, ModuleRef } from "@/lib/gptScene";
+import {
+  buildGptScene, buildGenericScene, GptConfig, ModuleRef, GenericLayer,
+} from "@/lib/gptScene";
 import { buildWalkthrough, Step } from "@/lib/walkthrough";
 import { Box, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,8 @@ export function Visualizer3D() {
   const [stepIdx, setStepIdx] = useState(0);
   const [bridge, setBridge] = useState<any>(null);
   const [fromArk, setFromArk] = useState(false);
+  const [genericLayers, setGenericLayers] = useState<GenericLayer[] | null>(null);
+  const [toast, setToast] = useState<string>("");
 
   // ---- Three.js init ----
   useEffect(() => {
@@ -121,7 +125,7 @@ export function Visualizer3D() {
     };
   }, []);
 
-  // ---- (re)build scene on config change ----
+  // ---- (re)build scene on config / generic change ----
   useEffect(() => {
     const st = stateRef.current;
     if (!st.scene) return;
@@ -132,13 +136,37 @@ export function Visualizer3D() {
         o.material?.dispose?.();
       });
     }
-    const { root, modules } = buildGptScene(config);
-    st.scene.add(root);
-    st.root = root;
-    st.modules = modules;
-    setSteps(buildWalkthrough(config.nLayers));
+    if (genericLayers && genericLayers.length) {
+      const { root, modules } = buildGenericScene(genericLayers);
+      st.scene.add(root);
+      st.root = root;
+      st.modules = modules;
+      // Generic walkthrough: overview + 1 step per layer
+      const gsteps: Step[] = [
+        {
+          title: "Vue d'ensemble",
+          focus: "__all__",
+          body: `Architecture ARK : ${genericLayers.length} couches. Le flux ` +
+            "va de gauche (entrée) à droite (sortie). Hauteur/profondeur des " +
+            "blocs ∝ taille (neurones/canaux). Glisse pour parcourir chaque couche.",
+        },
+        ...genericLayers.map((l) => ({
+          title: l.label,
+          focus: l.id,
+          body: `${l.label}${l.sub ? " · " + l.sub : ""}\nCatégorie : ` +
+            `${l.category}. Type node : ${l.type}.`,
+        })),
+      ];
+      setSteps(gsteps);
+    } else {
+      const { root, modules } = buildGptScene(config);
+      st.scene.add(root);
+      st.root = root;
+      st.modules = modules;
+      setSteps(buildWalkthrough(config.nLayers));
+    }
     setStepIdx(0);
-  }, [config]);
+  }, [config, genericLayers]);
 
   // ---- focus camera on step ----
   const focusStep = useCallback((idx: number) => {
@@ -157,11 +185,10 @@ export function Visualizer3D() {
       st.modules.find((m: ModuleRef) => m.key === step.focus) ||
       st.modules.find((m: ModuleRef) => m.key.startsWith(step.focus));
     if (!mod) return;
-    // world center (root has y offset)
-    const world = mod.center.clone();
-    world.y += st.root.position.y;
+    // world center (root may have x/y offset)
+    const world = mod.center.clone().add(st.root.position);
     ct.target.copy(world);
-    ct.radius = Math.max(18, mod.radius * 2.4);
+    ct.radius = Math.max(16, mod.radius * 2.6);
     ct.theta = 0.6; ct.phi = 1.35;
   }, [steps]);
 
@@ -179,15 +206,36 @@ export function Visualizer3D() {
     if (!bridge) return;
     try {
       const cfgStr = await bridge.viz_get_model_config?.();
-      if (!cfgStr) return;
+      if (!cfgStr) {
+        setToast("Scène vide — ajoute des nodes d'abord.");
+        setTimeout(() => setToast(""), 3000);
+        return;
+      }
       const c = JSON.parse(cfgStr);
-      if (c && c.nEmbd) {
+      if (c && c.generic) {
+        // Generic architecture mode (CNN/ResNet/MLP/etc)
+        if (!c.layers || !c.layers.length) {
+          setToast("Aucune couche détectée dans la scène.");
+          setTimeout(() => setToast(""), 3000);
+          return;
+        }
+        setGenericLayers(c.layers);
+        setPresetName(`ARK · ${c.name || "scène"}`);
+        setFromArk(true);
+        setToast(`${c.layers.length} couches chargées.`);
+        setTimeout(() => setToast(""), 2500);
+      } else if (c && c.nEmbd) {
+        // Transformer/GPT mode
+        setGenericLayers(null);
         setConfig(c);
         setPresetName(c.name ? `ARK · ${c.name}` : "ARK scène");
         setFromArk(true);
+        setToast("Modèle transformer chargé (mode GPT).");
+        setTimeout(() => setToast(""), 2500);
       }
-    } catch {
-      /* noop */
+    } catch (e) {
+      setToast("Erreur chargement scène.");
+      setTimeout(() => setToast(""), 3000);
     }
   };
 
@@ -234,6 +282,13 @@ export function Visualizer3D() {
 
       {/* 3D canvas */}
       <div ref={mountRef} className="flex-1 min-h-0 cursor-grab active:cursor-grabbing" />
+
+      {/* Toast */}
+      {toast && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-bg-overlay border border-primary/50 text-fg text-xs px-3 py-2 rounded-md shadow-lg">
+          {toast}
+        </div>
+      )}
 
       {/* Didactic card */}
       <div className="absolute bottom-0 left-0 right-0 bg-bg-panel/95 backdrop-blur border-t border-border-subtle p-3 z-10">

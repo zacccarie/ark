@@ -575,9 +575,65 @@ class ArkBridge(QObject):
                         "vocab": int(p.get("vocab_size", 1000)),
                         "name": "transformer",
                     })
-            return ""
+            # Phase 70 : pas de transformer → mode générique (toute archi)
+            return _json.dumps(self._build_generic_layers())
+        except Exception as e:
+            return _json.dumps({"generic": True, "layers": [],
+                                  "error": str(e)})
+
+    def _build_generic_layers(self) -> dict:
+        """Topo-ordonne la scène → liste de couches pour viz 3D générique."""
+        from ark.core.graph_compiler import _topo_sort_scene
+        # Catégories → couleur (hex int côté JS)
+        CAT_COLOR = {
+            "Input": "embed", "Neural": "mlp", "Convolution": "attn",
+            "Normalization": "ln", "Activation": "softmax",
+            "Diffusion": "attn", "Output Viewer": "output",
+            "Loss": "output", "Optimizer": "proj",
+        }
+        try:
+            ordered, incoming, outgoing, routed = _topo_sort_scene(self._mw.scene)
         except Exception:
-            return ""
+            ordered = self._mw.scene.nodes()
+            incoming = {}
+        layers = []
+        for n in ordered:
+            spec = n.spec
+            p = n.params
+            # taille heuristique depuis params
+            size = 1
+            for key in ("neurons", "channels", "out_features", "hidden_dim",
+                          "out_dim", "features", "d_model"):
+                if key in p:
+                    try:
+                        size = int(p[key])
+                        break
+                    except Exception:
+                        pass
+            kind = CAT_COLOR.get(spec.category, "proj")
+            label = spec.title
+            sub = ""
+            # param résumé court
+            for key in ("neurons", "channels", "kernel", "activation",
+                          "out_dim", "hidden_dim"):
+                if key in p:
+                    sub += f"{key}={p[key]} "
+            layers.append({
+                "id": n.id,
+                "type": spec.name,
+                "label": label,
+                "sub": sub.strip(),
+                "category": spec.category,
+                "kind": kind,
+                "size": max(1, min(size, 512)),
+                "nIn": len(incoming.get(n.id, [])) if isinstance(incoming, dict) else 0,
+            })
+        name = "ARK scène"
+        try:
+            name = self._mw.tabs.tabText(self._mw.tabs.currentIndex())
+        except Exception:
+            pass
+        return {"generic": True, "name": name, "layers": layers}
 
     @Slot()
     def raise_viz3d(self):
