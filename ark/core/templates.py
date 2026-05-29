@@ -5,6 +5,8 @@ import uuid
 
 TEMPLATES_LIST = [
     ("mlp_mnist", "MLP MNIST (image → 2× dense → 10)"),
+    ("mlp_mnist_demo",
+     "MLP MNIST Demo ★ (perceptron 784→128→64→10 + top-K + probas)"),
     ("cnn_cifar", "CNN CIFAR-10 (conv×2 → dense → 10)"),
     ("resnet_block", "ResNet block (conv+bn+conv+bn+residual)"),
     ("transformer_mini", "Transformer mini (text → 2× transformer block)"),
@@ -72,6 +74,42 @@ def template_mlp_mnist() -> dict:
     return _wrap("MLP MNIST", [inp, d1, d2],
                   [_conn(inp, d1), _conn(d1, d2)],
                   num_classes=10, tags=["template", "vision", "mnist"])
+
+
+def template_mlp_mnist_demo() -> dict:
+    """Phase 72 : MLP MNIST primitif — nodes les plus élémentaires.
+
+    Perceptron multi-couche complet :
+    image_input (1×28×28 = 784) → dense(128, relu) → dense(64, relu)
+      → dense(10, none = logits) → top_k_predictions (chiffre prédit)
+                                  ↘ prob_distribution (10 classes bar chart)
+
+    Pédagogique : chaque dense = 1 couche fully-connected. Pas de conv,
+    pas d'astuce — juste W·x + b + activation. Reconnaît chiffres
+    manuscrits ~96% après entraînement.
+    """
+    inp = _node("image_input", 0, 220, {"shape": "[1, 28, 28]"})
+    h1 = _node("dense", 260, 220,
+                 {"neurons": 128, "activation": "relu", "dropout": 0.0})
+    h2 = _node("dense", 520, 220,
+                 {"neurons": 64, "activation": "relu", "dropout": 0.0})
+    out = _node("dense", 780, 220,
+                  {"neurons": 10, "activation": "none"})
+    topk = _node("top_k_predictions", 1040, 140,
+                   {"title": "Chiffre prédit", "k": 3,
+                    "labels": "0,1,2,3,4,5,6,7,8,9"})
+    dist = _node("prob_distribution", 1040, 340,
+                   {"output_path": "./output/mnist_probs.html",
+                    "title": "Probabilités 0-9", "max_bars": 10})
+    conns = [
+        _conn(inp, h1), _conn(h1, h2), _conn(h2, out),
+        _conn(out, topk), _conn(out, dist),
+    ]
+    return _wrap("MLP MNIST Demo (perceptron)",
+                  [inp, h1, h2, out, topk, dist], conns,
+                  num_classes=10,
+                  tags=["template", "mlp", "perceptron", "mnist",
+                        "from-scratch", "didactique"])
 
 
 def template_cnn_cifar() -> dict:
@@ -500,6 +538,7 @@ def template_img2img_style() -> dict:
 
 _BUILDERS = {
     "mlp_mnist": template_mlp_mnist,
+    "mlp_mnist_demo": template_mlp_mnist_demo,
     "cnn_cifar": template_cnn_cifar,
     "resnet_block": template_resnet_block,
     "transformer_mini": template_transformer_mini,
