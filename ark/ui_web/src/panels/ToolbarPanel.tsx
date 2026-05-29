@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
 import { getBridge } from "@/lib/bridge";
-import { Play, Square, Boxes, PanelRight, Cog } from "lucide-react";
+import {
+  Play, Square, Boxes, PanelRight, Cog,
+  Maximize2, Map, Grid3x3,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const ZOOM_OPTS = ["25%", "50%", "75%", "100%", "150%", "200%", "400%"];
+const TOOL_OPTS = ["Select", "Pan", "Box"];
 
 export function ToolbarPanel() {
   const [bridge, setBridge] = useState<any>(null);
   const [mode, setMode] = useState<"Compiler" | "Entraîner" | "Bench">("Compiler");
   const [batch, setBatch] = useState(1);
   const [active, setActive] = useState(0);
+  const [zoom, setZoom] = useState("100%");
+  const [mapOn, setMapOn] = useState(true);
+  const [snapOn, setSnapOn] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -84,6 +94,60 @@ export function ToolbarPanel() {
         className="ark-btn flex items-center gap-1 text-xs"
       >
         <Cog className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Divider */}
+      <div className="w-px h-6 bg-border mx-1" />
+
+      {/* View controls */}
+      <select
+        value={zoom}
+        onChange={(e) => {
+          setZoom(e.target.value);
+          const pct = parseInt(e.target.value);
+          bridge?.set_zoom?.(pct / 100);
+        }}
+        className="ark-input w-16"
+      >
+        {ZOOM_OPTS.map((z) => (
+          <option key={z}>{z}</option>
+        ))}
+      </select>
+      <button
+        onClick={() => bridge?.fit_view?.()}
+        className="ark-btn flex items-center gap-1 text-xs"
+        title="Centrer + ajuster"
+      >
+        <Maximize2 className="w-3.5 h-3.5" />
+        Fit
+      </button>
+      <button
+        onClick={() => {
+          const n = !mapOn;
+          setMapOn(n);
+          bridge?.toggle_minimap?.(n);
+        }}
+        className={cn(
+          "ark-btn flex items-center gap-1 text-xs",
+          mapOn && "bg-accent-blue/15 text-accent-blue border-accent-blue/50"
+        )}
+        title="Minimap"
+      >
+        <Map className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => {
+          const n = !snapOn;
+          setSnapOn(n);
+          bridge?.toggle_snap?.(n);
+        }}
+        className={cn(
+          "ark-btn flex items-center gap-1 text-xs",
+          snapOn && "bg-accent-blue/15 text-accent-blue border-accent-blue/50"
+        )}
+        title="Snap to grid"
+      >
+        <Grid3x3 className="w-3.5 h-3.5" />
       </button>
     </div>
   );

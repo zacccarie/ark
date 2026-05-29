@@ -219,6 +219,8 @@ class MainWindow(QMainWindow):
                 web = False  # fallback
         self._stats_overlay = StatsOverlay(host)
         self._view_controls = ViewControls(host)
+        if web:
+            self._view_controls.hide()
         self._global_progress = GlobalProgress(host)
         self._global_progress.hide()
         # Phase 50 : minimap bottom-right above ViewControls

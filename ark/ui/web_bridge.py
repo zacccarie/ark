@@ -10,7 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, Qt
 
 
 class ArkBridge(QObject):
@@ -186,6 +186,50 @@ class ArkBridge(QObject):
     def toggle_inspector(self):
         if self._mw and hasattr(self._mw, "_toggle_inspector"):
             self._mw._toggle_inspector()
+
+    # ============================================================
+    # View controls (zoom / fit / map / snap)
+    # ============================================================
+
+    @Slot(float)
+    def set_zoom(self, factor: float):
+        if self._mw is None or not hasattr(self._mw, "view"):
+            return
+        v = self._mw.view
+        try:
+            v.resetTransform()
+            v.scale(factor, factor)
+        except Exception:
+            pass
+
+    @Slot()
+    def fit_view(self):
+        if self._mw is None or not hasattr(self._mw, "view"):
+            return
+        v = self._mw.view
+        try:
+            rect = self._mw.scene.itemsBoundingRect()
+            if rect.isEmpty():
+                return
+            v.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        except Exception:
+            pass
+
+    @Slot(bool)
+    def toggle_minimap(self, on: bool):
+        if self._mw and hasattr(self._mw, "_minimap"):
+            try:
+                self._mw._minimap.setVisible(on)
+            except Exception:
+                pass
+
+    @Slot(bool)
+    def toggle_snap(self, on: bool):
+        if self._mw and hasattr(self._mw, "scene"):
+            try:
+                self._mw.scene.snap_to_grid = on
+            except Exception:
+                pass
 
     # ============================================================
     # Audio
