@@ -1,0 +1,301 @@
+import { useEffect, useRef, useState, useCallback } from "react";
+import * as THREE from "three";
+import { getBridge } from "@/lib/bridge";
+import { buildGptScene, GptConfig, ModuleRef } from "@/lib/gptScene";
+import { buildWalkthrough, Step } from "@/lib/walkthrough";
+import { Box, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const PRESETS: Record<string, GptConfig> = {
+  "nano-GPT (demo)": { nLayers: 3, nHeads: 3, nEmbd: 48, seqLen: 6, vocab: 3,
+    name: "nano-GPT" },
+  "GPT-2 small": { nLayers: 12, nHeads: 12, nEmbd: 768, seqLen: 1024,
+    vocab: 50257, name: "GPT-2" },
+  "Shakespeare (Karpathy)": { nLayers: 6, nHeads: 6, nEmbd: 384, seqLen: 256,
+    vocab: 65, name: "char-GPT" },
+};
+
+export function Visualizer3D() {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef<any>({});
+  const [presetName, setPresetName] = useState("nano-GPT (demo)");
+  const [config, setConfig] = useState<GptConfig>(PRESETS["nano-GPT (demo)"]);
+  const [steps, setSteps] = useState<Step[]>(buildWalkthrough(3));
+  const [stepIdx, setStepIdx] = useState(0);
+  const [bridge, setBridge] = useState<any>(null);
+  const [fromArk, setFromArk] = useState(false);
+
+  // ---- Three.js init ----
+  useEffect(() => {
+    const mount = mountRef.current!;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x09090b);
+    scene.fog = new THREE.Fog(0x09090b, 80, 260);
+
+    const camera = new THREE.PerspectiveCamera(
+      50, mount.clientWidth / mount.clientHeight, 0.1, 1000);
+    camera.position.set(40, 10, 60);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    mount.appendChild(renderer.domElement);
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.8);
+    key.position.set(30, 50, 40);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x00ff85, 0.3);
+    rim.position.set(-40, 20, -30);
+    scene.add(rim);
+
+    // Manual orbit (no OrbitControls dep)
+    let dragging = false;
+    let px = 0, py = 0;
+    const orbit = { theta: 0.9, phi: 1.3, radius: 70,
+      target: new THREE.Vector3(0, 0, 0) };
+    const camTarget = {
+      theta: 0.9, phi: 1.3, radius: 70,
+      target: new THREE.Vector3(0, 0, 0),
+    };
+    const onDown = (e: PointerEvent) => {
+      dragging = true; px = e.clientX; py = e.clientY;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      camTarget.theta -= (e.clientX - px) * 0.008;
+      camTarget.phi = Math.max(0.15, Math.min(Math.PI - 0.15,
+        camTarget.phi - (e.clientY - py) * 0.008));
+      px = e.clientX; py = e.clientY;
+    };
+    const onUp = () => { dragging = false; };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      camTarget.radius = Math.max(15, Math.min(200,
+        camTarget.radius + e.deltaY * 0.06));
+    };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+
+    let raf = 0;
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      // Lerp orbit
+      orbit.theta += (camTarget.theta - orbit.theta) * 0.08;
+      orbit.phi += (camTarget.phi - orbit.phi) * 0.08;
+      orbit.radius += (camTarget.radius - orbit.radius) * 0.08;
+      orbit.target.lerp(camTarget.target, 0.08);
+      const sinP = Math.sin(orbit.phi);
+      camera.position.set(
+        orbit.target.x + orbit.radius * sinP * Math.sin(orbit.theta),
+        orbit.target.y + orbit.radius * Math.cos(orbit.phi),
+        orbit.target.z + orbit.radius * sinP * Math.cos(orbit.theta));
+      camera.lookAt(orbit.target);
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const onResize = () => {
+      if (!mount.clientWidth) return;
+      camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+    };
+    window.addEventListener("resize", onResize);
+
+    stateRef.current = { scene, camera, renderer, camTarget, orbit,
+      root: null as THREE.Group | null, modules: [] as ModuleRef[] };
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("wheel", onWheel);
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+    };
+  }, []);
+
+  // ---- (re)build scene on config change ----
+  useEffect(() => {
+    const st = stateRef.current;
+    if (!st.scene) return;
+    if (st.root) {
+      st.scene.remove(st.root);
+      st.root.traverse((o: any) => {
+        o.geometry?.dispose?.();
+        o.material?.dispose?.();
+      });
+    }
+    const { root, modules } = buildGptScene(config);
+    st.scene.add(root);
+    st.root = root;
+    st.modules = modules;
+    setSteps(buildWalkthrough(config.nLayers));
+    setStepIdx(0);
+  }, [config]);
+
+  // ---- focus camera on step ----
+  const focusStep = useCallback((idx: number) => {
+    const st = stateRef.current;
+    if (!st.modules || !st.root) return;
+    const step = steps[idx];
+    if (!step) return;
+    const ct = st.camTarget;
+    if (step.focus === "__all__" || step.focus === "__blocks__") {
+      ct.target.set(0, 0, 0);
+      ct.radius = step.focus === "__all__" ? 90 : 55;
+      ct.theta = 0.9; ct.phi = 1.2;
+      return;
+    }
+    const mod: ModuleRef | undefined =
+      st.modules.find((m: ModuleRef) => m.key === step.focus) ||
+      st.modules.find((m: ModuleRef) => m.key.startsWith(step.focus));
+    if (!mod) return;
+    // world center (root has y offset)
+    const world = mod.center.clone();
+    world.y += st.root.position.y;
+    ct.target.copy(world);
+    ct.radius = Math.max(18, mod.radius * 2.4);
+    ct.theta = 0.6; ct.phi = 1.35;
+  }, [steps]);
+
+  useEffect(() => { focusStep(stepIdx); }, [stepIdx, focusStep]);
+
+  // ---- bridge: load ARK model config ----
+  useEffect(() => {
+    (async () => {
+      const b = await getBridge();
+      setBridge(b);
+    })();
+  }, []);
+
+  const loadFromArk = async () => {
+    if (!bridge) return;
+    try {
+      const cfgStr = await bridge.viz_get_model_config?.();
+      if (!cfgStr) return;
+      const c = JSON.parse(cfgStr);
+      if (c && c.nEmbd) {
+        setConfig(c);
+        setPresetName(c.name ? `ARK · ${c.name}` : "ARK scène");
+        setFromArk(true);
+      }
+    } catch {
+      /* noop */
+    }
+  };
+
+  const step = steps[stepIdx];
+
+  return (
+    <div className="flex flex-col h-full bg-bg-deep relative">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-bg-panel z-10">
+        <Box className="w-4 h-4 text-primary" />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-secondary">
+          LLM 3D
+        </h2>
+        <select
+          value={presetName}
+          onChange={(e) => {
+            const p = PRESETS[e.target.value];
+            if (p) {
+              setPresetName(e.target.value);
+              setConfig(p);
+              setFromArk(false);
+            }
+          }}
+          className="ark-input w-44 ml-1"
+        >
+          {Object.keys(PRESETS).map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+          {fromArk && <option>{presetName}</option>}
+        </select>
+        <button
+          onClick={loadFromArk}
+          className="ark-btn flex items-center gap-1 text-xs"
+          title="Visualiser le tiny_llm_model de la scène ARK"
+        >
+          <Cpu className="w-3.5 h-3.5" />
+          Depuis ARK
+        </button>
+        <span className="text-[10px] text-fg-disabled ml-auto font-mono">
+          {config.nLayers}L · {config.nHeads}H · {config.nEmbd}d · vocab{" "}
+          {config.vocab}
+        </span>
+      </div>
+
+      {/* 3D canvas */}
+      <div ref={mountRef} className="flex-1 min-h-0 cursor-grab active:cursor-grabbing" />
+
+      {/* Didactic card */}
+      <div className="absolute bottom-0 left-0 right-0 bg-bg-panel/95 backdrop-blur border-t border-border-subtle p-3 z-10">
+        <div className="flex items-start gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-mono text-primary">
+                {stepIdx + 1}/{steps.length}
+              </span>
+              <h3 className="text-sm font-bold text-fg">{step?.title}</h3>
+            </div>
+            <p className="text-xs text-fg-secondary leading-relaxed">
+              {step?.body}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => setStepIdx((i) => Math.max(0, i - 1))}
+              disabled={stepIdx === 0}
+              className="ark-btn p-1.5 disabled:opacity-30"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() =>
+                setStepIdx((i) => Math.min(steps.length - 1, i + 1))
+              }
+              disabled={stepIdx === steps.length - 1}
+              className="ark-btn p-1.5 disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {/* Slider */}
+        <input
+          type="range"
+          min={0}
+          max={steps.length - 1}
+          value={stepIdx}
+          onChange={(e) => setStepIdx(parseInt(e.target.value))}
+          className="w-full mt-2 accent-primary"
+        />
+        <div className="flex justify-between mt-1">
+          {steps.map((s, i) => (
+            <button
+              key={i}
+              onClick={() => setStepIdx(i)}
+              className={cn(
+                "text-[9px] truncate px-0.5 transition-colors",
+                i === stepIdx
+                  ? "text-primary font-bold"
+                  : "text-fg-disabled hover:text-fg-tertiary"
+              )}
+              style={{ maxWidth: `${100 / steps.length}%` }}
+              title={s.title}
+            >
+              {s.title.split(" ")[0]}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

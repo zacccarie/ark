@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getBridge } from "@/lib/bridge";
 import {
   Play, Square, Boxes, PanelRight, Cog,
-  Maximize2, Map, Grid3x3, Cloud,
+  Maximize2, Map, Grid3x3, Cloud, Box,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -85,6 +85,14 @@ export function ToolbarPanel() {
       >
         <Cloud className="w-3.5 h-3.5" />
         Modal
+      </button>
+      <button
+        onClick={() => bridge?.raise_viz3d?.()}
+        className="ark-btn flex items-center gap-1.5 text-xs"
+        title="Visualiseur LLM 3D"
+      >
+        <Box className="w-3.5 h-3.5" />
+        3D
       </button>
       <div className="flex-1" />
       <span className="font-mono text-xs text-fg-secondary bg-bg-raised border border-border rounded-sm px-2 py-0.5">

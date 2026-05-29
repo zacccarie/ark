@@ -542,6 +542,52 @@ class ArkBridge(QObject):
     # Modal remote compute (Phase 68)
     # ============================================================
 
+    @Slot(result=str)
+    def viz_get_model_config(self):
+        """Phase 69 : extrait config GPT depuis tiny_llm_model OU
+        transformer_block de la scène courante pour le visualizer 3D."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return ""
+        try:
+            for it in self._mw.scene.items():
+                spec = getattr(it, "spec", None)
+                if spec is None:
+                    continue
+                p = it.params
+                if spec.name == "tiny_llm_model":
+                    d = int(p.get("d_model", 64))
+                    return _json.dumps({
+                        "nLayers": int(p.get("n_blocks", 2)),
+                        "nHeads": int(p.get("n_heads", 4)),
+                        "nEmbd": d,
+                        "seqLen": int(p.get("block_size", 64)),
+                        "vocab": 96,
+                        "name": p.get("save_name", "tiny_llm"),
+                    })
+                if spec.name == "transformer_block":
+                    d = int(p.get("d_model", p.get("embed_dim", 128)))
+                    return _json.dumps({
+                        "nLayers": int(p.get("num_layers", p.get("depth", 2))),
+                        "nHeads": int(p.get("num_heads", p.get("n_heads", 4))),
+                        "nEmbd": d,
+                        "seqLen": int(p.get("max_len", 64)),
+                        "vocab": int(p.get("vocab_size", 1000)),
+                        "name": "transformer",
+                    })
+            return ""
+        except Exception:
+            return ""
+
+    @Slot()
+    def raise_viz3d(self):
+        if self._mw and hasattr(self._mw, "dock_viz3d"):
+            try:
+                self._mw.dock_viz3d.setVisible(True)
+                self._mw.dock_viz3d.raise_()
+            except Exception:
+                pass
+
     @Slot()
     def raise_compute(self):
         if self._mw and hasattr(self._mw, "dock_compute"):

@@ -22,6 +22,7 @@ export default defineConfig({
         toolbar: path.resolve(__dirname, "toolbar.html"),
         architect: path.resolve(__dirname, "architect.html"),
         compute: path.resolve(__dirname, "compute.html"),
+        viz3d: path.resolve(__dirname, "viz3d.html"),
       },
     },
   },
