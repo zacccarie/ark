@@ -9,6 +9,8 @@ TEMPLATES_LIST = [
      "MLP MNIST Demo ★ (perceptron 784→128→64→10 + top-K + probas)"),
     ("mnist_recognize",
      "MNIST Recognize ★ CONCRET (glyphe → compile → chiffre reconnu)"),
+    ("data_convert_demo",
+     "Data Convert Demo (CSV → JSON + inspect, toolkit Data)"),
     ("cnn_cifar", "CNN CIFAR-10 (conv×2 → dense → 10)"),
     ("resnet_block", "ResNet block (conv+bn+conv+bn+residual)"),
     ("transformer_mini", "Transformer mini (text → 2× transformer block)"),
@@ -112,6 +114,30 @@ def template_mlp_mnist_demo() -> dict:
                   num_classes=10,
                   tags=["template", "mlp", "perceptron", "mnist",
                         "from-scratch", "didactique"])
+
+
+def template_data_convert_demo() -> dict:
+    """Phase 75 : pipeline conversion données. CSV → JSON → texte.
+
+    text_input (CSV) → csv_to_json → dump_json → text_viewer
+                                   ↘ data_inspect → text_viewer
+    Démontre la conversion nodale type Houdini/TouchDesigner.
+    """
+    txt = _node("text_input", 0, 200,
+                  {"prompt": "ville,temp,humidite\nParis,18,65\n"
+                             "Lyon,22,55\nNice,25,70"})
+    c2j = _node("csv_to_json", 280, 200, {"sep": ","})
+    dump = _node("dump_json", 560, 140, {"indent": 2})
+    tv1 = _node("text_viewer", 840, 140, {"title": "JSON", "max_chars": 2000})
+    insp = _node("data_inspect", 560, 320, {})
+    tv2 = _node("text_viewer", 840, 320, {"title": "Inspect", "max_chars": 1000})
+    conns = [
+        _conn(txt, c2j), _conn(c2j, dump), _conn(dump, tv1),
+        _conn(c2j, insp), _conn(insp, tv2),
+    ]
+    return _wrap("Data Convert Demo (CSV→JSON)",
+                  [txt, c2j, dump, tv1, insp, tv2], conns,
+                  tags=["template", "data", "conversion", "demo"])
 
 
 def template_mnist_recognize() -> dict:
@@ -568,6 +594,7 @@ _BUILDERS = {
     "mlp_mnist": template_mlp_mnist,
     "mlp_mnist_demo": template_mlp_mnist_demo,
     "mnist_recognize": template_mnist_recognize,
+    "data_convert_demo": template_data_convert_demo,
     "cnn_cifar": template_cnn_cifar,
     "resnet_block": template_resnet_block,
     "transformer_mini": template_transformer_mini,

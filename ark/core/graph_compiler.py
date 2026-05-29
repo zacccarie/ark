@@ -719,6 +719,18 @@ def _register_mnist_demo():
 _register_mnist_demo()
 
 
+# Data toolkit (Phase 75)
+def _register_data():
+    try:
+        from ark.core.data_nodes import register_data_handlers
+        register_data_handlers(HANDLERS)
+    except Exception as e:
+        import sys
+        print(f"[ARK] data toolkit handlers failed: {e}", file=sys.stderr)
+
+_register_data()
+
+
 INPUT_TYPES = {"image_input", "tabular_input", "text_input"}
 NON_FORWARD_TYPES = {"adam", "cross_entropy", "plot_scatter", "plot_line"}
 SKIP_TYPES = INPUT_TYPES | NON_FORWARD_TYPES
@@ -921,6 +933,8 @@ def compile_scene(scene, num_classes: int | None = None,
         "ddim_sampler",
         # Phase 74 : mnist sample source
         "mnist_sample",
+        # Phase 75 : data source (glTF loader)
+        "load_gltf",
     }
 
     # Input node : 1er INPUT_TYPES, sinon 1er SOURCE_TYPES

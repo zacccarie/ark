@@ -654,6 +654,14 @@ def default_registry(force_rebuild: bool = False) -> NodeRegistry:
         import sys
         print(f"[ARK] mnist demo specs failed: {e}", file=sys.stderr)
 
+    # Data toolkit (Phase 75) — conversion/adaptation anything↔anything
+    try:
+        from ark.core.data_nodes import register_data_specs
+        register_data_specs(r)
+    except Exception as e:
+        import sys
+        print(f"[ARK] data toolkit specs failed: {e}", file=sys.stderr)
+
     # User Groups (Phase 31) — scan ~/.ark/groups/*.json
     try:
         from ark.core.groups import register_groups
