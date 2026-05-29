@@ -344,12 +344,32 @@ class NodeEditorView(QGraphicsView):
         item = self.itemAt(event.pos())
         menu = QMenu(self)
         from ark.ui.node_editor.node_item import NodeItem
+        # Phase 78b : nombre de nodes sélectionnés (pour grouper)
+        sel_nodes = [it for it in scene.selectedItems()
+                       if isinstance(it, NodeItem)]
         if isinstance(item, NodeItem):
+            # Assure que le node cliqué est dans la sélection
+            if item not in sel_nodes:
+                sel_nodes = [item]
             menu.addAction("Bypass on/off", lambda n=item: self._toggle_bypass(n))
             menu.addAction("Renommer...", lambda: None)
             menu.addSeparator()
             menu.addAction("Dupliquer", lambda n=item: self._duplicate_node(n))
             menu.addAction("Supprimer", lambda n=item: scene.remove_node(n))
+            menu.addSeparator()
+            # Phase 78b : grouper / collapse via clic droit
+            n_sel = len(sel_nodes)
+            a_collapse = menu.addAction(
+                f"⊟ Grouper en node ({n_sel} node{'s' if n_sel > 1 else ''})")
+            a_collapse.triggered.connect(self._ctx_collapse_group)
+            a_save = menu.addAction("Enregistrer sélection comme groupe…")
+            a_save.triggered.connect(self._ctx_save_group)
+            # Drill-in si node groupe
+            if getattr(item.spec, "category", "") == "User Groups":
+                menu.addSeparator()
+                a_edit = menu.addAction("⊟ Éditer le sous-graphe (precomp)")
+                a_edit.triggered.connect(
+                    lambda _=False, nm=item.spec.name: self._ctx_drill_in(nm))
         elif isinstance(item, ConnectionItem):
             menu.addAction("Supprimer connexion", lambda c=item: scene.remove_connection(c))
         else:
@@ -357,6 +377,21 @@ class NodeEditorView(QGraphicsView):
             menu.addSeparator()
             menu.addAction("Tout effacer", scene.clear_graph)
         menu.exec(event.globalPos())
+
+    def _ctx_collapse_group(self):
+        win = self.window()
+        if hasattr(win, "_on_collapse_selection_to_group"):
+            win._on_collapse_selection_to_group()
+
+    def _ctx_save_group(self):
+        win = self.window()
+        if hasattr(win, "_on_save_selection_as_group"):
+            win._on_save_selection_as_group()
+
+    def _ctx_drill_in(self, group_name: str):
+        win = self.window()
+        if hasattr(win, "_open_group_subgraph"):
+            win._open_group_subgraph(group_name)
 
     def _toggle_bypass(self, node):
         node.bypass = not node.bypass
