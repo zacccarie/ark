@@ -52,6 +52,16 @@ class ArkBridge(QObject):
         cats = sorted({s.category for s in r.all()})
         return cats
 
+    @Slot(result=str)
+    def category_colors(self):
+        """Phase 79b : map catégorie → couleur hex (palette + inspector)."""
+        import json as _json
+        from ark.nodes.registry import default_registry
+        from ark.ui import design_tokens as T
+        r = default_registry()
+        cats = sorted({s.category for s in r.all()})
+        return _json.dumps({c: T.category_color(c) for c in cats})
+
     @Slot(str, result=list)
     def list_nodes_in_category(self, category: str):
         from ark.nodes.registry import default_registry
@@ -77,11 +87,13 @@ class ArkBridge(QObject):
 
     def _serialize_node(self, node) -> dict:
         spec = node.spec
+        from ark.ui import design_tokens as T
         out = {
             "id": node.id,
             "type": spec.name,
             "title": spec.title,
             "category": spec.category,
+            "categoryColor": T.category_color(spec.category),
             "description": spec.description,
             "role": getattr(spec, "role", ""),
             "function": getattr(spec, "function", ""),

@@ -9,10 +9,16 @@ export function PalettePanel() {
   const [cats, setCats] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
+  const [colors, setColors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
       const b = await getBridge();
+      try {
+        setColors(JSON.parse(await b.category_colors()));
+      } catch {
+        /* noop */
+      }
       const catNames: string[] = await b.list_categories();
       const all: Category[] = await Promise.all(
         catNames.map(async (cn) => ({
@@ -81,7 +87,7 @@ export function PalettePanel() {
                 <button
                   onClick={() => toggleCat(c.name)}
                   className={cn(
-                    "flex items-center gap-1 w-full px-2 py-1 text-xs font-semibold",
+                    "flex items-center gap-1.5 w-full px-2 py-1 text-xs font-semibold",
                     "uppercase tracking-wider text-fg-tertiary hover:text-fg",
                     "transition-colors duration-fast"
                   )}
@@ -91,6 +97,10 @@ export function PalettePanel() {
                   ) : (
                     <ChevronRight className="w-3 h-3" />
                   )}
+                  <span
+                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    style={{ backgroundColor: colors[c.name] || "#71717A" }}
+                  />
                   {c.name}
                   <span className="ml-auto text-[10px] text-fg-disabled font-normal">
                     {c.nodes.length}
@@ -106,10 +116,12 @@ export function PalettePanel() {
                         onDoubleClick={() => handleClick(n.name)}
                         onClick={() => handleClick(n.name)}
                         className={cn(
-                          "px-2 py-1.5 text-xs rounded-sm cursor-pointer",
+                          "flex items-center gap-2 px-2 py-1.5 text-xs rounded-sm cursor-pointer",
                           "text-fg-secondary hover:bg-bg-raised hover:text-fg",
-                          "active:bg-primary/20 transition-colors duration-fast"
+                          "active:bg-primary/20 transition-colors duration-fast",
+                          "border-l-2"
                         )}
+                        style={{ borderLeftColor: colors[c.name] || "#71717A" }}
                         title={`${n.name} — click to add`}
                       >
                         {n.title}

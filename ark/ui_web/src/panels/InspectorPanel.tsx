@@ -76,10 +76,20 @@ export function InspectorPanel() {
         </h2>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <div>
+        <div
+          className="pl-2 border-l-4 rounded-sm"
+          style={{ borderLeftColor: (node as any).categoryColor || "#71717A" }}
+        >
           <h1 className="text-base font-bold text-fg">{node.title}</h1>
-          <p className="text-[10px] text-fg-tertiary uppercase tracking-widest mt-0.5">
-            {node.category} · id {node.id.slice(0, 12)}
+          <p className="text-[10px] uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
+            <span
+              className="w-2 h-2 rounded-sm shrink-0"
+              style={{ backgroundColor: (node as any).categoryColor || "#71717A" }}
+            />
+            <span style={{ color: (node as any).categoryColor || "#B8B8C0" }}>
+              {node.category}
+            </span>
+            <span className="text-fg-disabled">· id {node.id.slice(0, 12)}</span>
           </p>
         </div>
 
