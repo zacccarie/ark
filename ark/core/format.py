@@ -65,7 +65,11 @@ def payload_to_scene(scene, payload: dict) -> None:
         # Restaure params
         for k, v in (nd.get("params") or {}).items():
             if k in node.params:
-                node.params[k] = v
+                # Use set_param so embedded widgets (text_input prompt) sync
+                if hasattr(node, "set_param"):
+                    node.set_param(k, v)
+                else:
+                    node.params[k] = v
         node.bypass = bool(nd.get("bypass", False))
         if "width" in nd:
             try:

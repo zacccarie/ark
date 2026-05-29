@@ -4,7 +4,8 @@ from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QBrush, QPen, QColor, QFont, QPainterPath, QCursor
 from PySide6.QtWidgets import (
     QGraphicsItem, QGraphicsTextItem, QGraphicsProxyWidget,
-    QWidget, QHBoxLayout, QPushButton, QFileDialog,
+    QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QFileDialog,
+    QPlainTextEdit,
 )
 
 from ark.ui import design_tokens as T
@@ -69,15 +70,19 @@ class NodeItem(QGraphicsItem):
         self._resize_start_h_extra = 0
         self._resize_start_pos = QPointF()
 
-        # Phase 56f : embed audio player buttons IN node for audio_player type
-        self._audio_proxy: QGraphicsProxyWidget | None = None
+        # Phase 56f/57 : embed widgets IN node (audio_player, text_input)
+        self._embed_proxy: QGraphicsProxyWidget | None = None
+        self._embed_host: QWidget | None = None
         self._audio_play_btn = None
         self._audio_dl_btn = None
         self._audio_proc = None
         self._audio_is_playing = False
         self._audio_poll_timer = None
+        self._text_input_widget: QPlainTextEdit | None = None
         if spec.name == "audio_player":
             self._setup_audio_player_widget()
+        elif spec.name == "text_input":
+            self._setup_text_input_widget()
 
     # ------------------------------------------------------------
     # Size / layout
@@ -90,10 +95,14 @@ class NodeItem(QGraphicsItem):
         param_h = len(self.spec.params) * self.PARAM_H
         thumb_h = 58 if self.spec.has_thumbnail else 0
         err_h = 16 if self.error else 0
-        # Phase 56f : audio_player has embedded ▶/⬇ widget (32px)
-        audio_h = 36 if self.spec.name == "audio_player" else 0
+        # Phase 56f/57 : embedded widgets (audio_player 80px, text_input 90px)
+        embed_h = 0
+        if self.spec.name == "audio_player":
+            embed_h = 80
+        elif self.spec.name == "text_input":
+            embed_h = 90
         return (self.HEADER_H + socket_h + param_h + thumb_h + err_h
-                + audio_h + self.PADDING_BOTTOM)
+                + embed_h + self.PADDING_BOTTOM)
 
     @property
     def height(self) -> int:
@@ -238,7 +247,16 @@ class NodeItem(QGraphicsItem):
         font_mono = QFont("SF Mono", T.FS_MICRO)
         painter.setFont(font_mono)
         painter.setPen(QPen(QColor(T.FG_TERTIARY)))
+        # Phase 57 : skip params hidden by embedded widget (prompt for text_input,
+        # all params for audio_player which has full Play+Download row)
+        _hide_params = set()
+        if self.spec.name == "text_input":
+            _hide_params = {"prompt"}
+        elif self.spec.name == "audio_player":
+            _hide_params = {p.name for p in self.spec.params}
         for i, p in enumerate(self.spec.params):
+            if p.name in _hide_params:
+                continue
             v = self.params.get(p.name, p.default)
             txt = f"{p.name} = {v}"
             painter.drawText(QRectF(8, param_y0 + i * self.PARAM_H, self.width - 16, self.PARAM_H),
@@ -439,6 +457,13 @@ class NodeItem(QGraphicsItem):
     def set_param(self, name: str, value):
         if name in self.params:
             self.params[name] = value
+            # Phase 57 : sync embedded text_input widget
+            if (self.spec.name == "text_input" and name == "prompt"
+                    and self._text_input_widget is not None):
+                if self._text_input_widget.toPlainText() != str(value):
+                    self._text_input_widget.blockSignals(True)
+                    self._text_input_widget.setPlainText(str(value))
+                    self._text_input_widget.blockSignals(False)
             self.update()
 
     def set_error(self, msg: str | None):
@@ -488,48 +513,95 @@ class NodeItem(QGraphicsItem):
             self._preview_qimage = None
 
     # ------------------------------------------------------------
-    # Phase 56f : embedded audio player widget (in-node ▶ + ⬇)
+    # Phase 56f/57 : embedded widgets (audio player ▶/⬇, text_input editor)
     # ------------------------------------------------------------
     def _setup_audio_player_widget(self):
-        """Embed Play + Download buttons directly in the node body."""
+        """Embed Play (full-width) + Download buttons directly in node body."""
         try:
             host = QWidget()
-            host.setStyleSheet("background: transparent;")
-            lay = QHBoxLayout(host)
-            lay.setContentsMargins(6, 4, 6, 4)
+            host.setStyleSheet(
+                f"QWidget {{ background: {T.BG_DEEP}; border-radius: 8px; }}")
+            lay = QVBoxLayout(host)
+            lay.setContentsMargins(8, 6, 8, 6)
             lay.setSpacing(6)
-            self._audio_play_btn = QPushButton("▶ Play")
+            self._audio_play_btn = QPushButton("▶  Play Audio")
+            self._audio_play_btn.setMinimumHeight(34)
             self._audio_play_btn.setStyleSheet(
-                f"background-color: {T.SUCCESS}; color: #0A0A0A; "
-                f"border: none; border-radius: 6px; padding: 4px 10px; "
-                f"font-weight: 700; font-size: 11px;")
+                f"QPushButton {{ background-color: {T.SUCCESS}; color: #0A0A0A; "
+                f"border: none; border-radius: 6px; padding: 6px 12px; "
+                f"font-weight: 700; font-size: 12px; }}"
+                f"QPushButton:hover {{ background-color: #00CC6A; }}")
             self._audio_play_btn.clicked.connect(self._on_node_audio_play)
             lay.addWidget(self._audio_play_btn)
-            self._audio_dl_btn = QPushButton("⬇")
-            self._audio_dl_btn.setToolTip("Download .wav")
+            self._audio_dl_btn = QPushButton("⬇  Download .wav")
+            self._audio_dl_btn.setMinimumHeight(28)
             self._audio_dl_btn.setStyleSheet(
-                f"background-color: {T.BG_PANEL_RAISED}; color: {T.FG_PRIMARY}; "
-                f"border: 1px solid {T.BORDER_DEFAULT}; "
-                f"border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+                f"QPushButton {{ background-color: {T.BG_PANEL_RAISED}; "
+                f"color: {T.FG_PRIMARY}; border: 1px solid {T.BORDER_DEFAULT}; "
+                f"border-radius: 6px; padding: 4px 10px; font-size: 11px; }}"
+                f"QPushButton:hover {{ background-color: {T.BG_OVERLAY}; }}")
             self._audio_dl_btn.clicked.connect(self._on_node_audio_download)
             lay.addWidget(self._audio_dl_btn)
-            lay.addStretch(1)
-            host.setFixedWidth(self.width - 12)
-            host.setFixedHeight(32)
-            self._audio_proxy = QGraphicsProxyWidget(self)
-            self._audio_proxy.setWidget(host)
-            # Position : sous header + sockets
-            self._reposition_audio_proxy()
+            self._embed_host = host
+            self._embed_proxy = QGraphicsProxyWidget(self)
+            self._embed_proxy.setWidget(host)
+            self._reposition_embed()
         except Exception:
-            self._audio_proxy = None
+            self._embed_proxy = None
 
-    def _reposition_audio_proxy(self):
-        if self._audio_proxy is None:
+    def _setup_text_input_widget(self):
+        """Embed QPlainTextEdit directly in text_input node for typing."""
+        try:
+            host = QWidget()
+            host.setStyleSheet(
+                f"QWidget {{ background: {T.BG_DEEP}; border-radius: 8px; }}")
+            lay = QVBoxLayout(host)
+            lay.setContentsMargins(8, 4, 8, 6)
+            lay.setSpacing(4)
+            self._text_input_widget = QPlainTextEdit()
+            self._text_input_widget.setPlainText(
+                str(self.params.get("prompt", "")))
+            self._text_input_widget.setPlaceholderText(
+                "Tape ton prompt ici…")
+            self._text_input_widget.setStyleSheet(
+                f"QPlainTextEdit {{ background-color: {T.BG_PANEL}; "
+                f"color: {T.FG_PRIMARY}; border: 1px solid {T.PRIMARY}; "
+                f"border-radius: 6px; padding: 6px; font-size: 12px; "
+                f"font-family: 'Menlo', monospace; }}"
+                f"QPlainTextEdit:focus {{ border: 1px solid {T.SUCCESS}; }}")
+            self._text_input_widget.setMinimumHeight(70)
+            # Wire to set_param so compile picks up the value
+            self._text_input_widget.textChanged.connect(
+                self._on_text_input_changed)
+            lay.addWidget(self._text_input_widget)
+            self._embed_host = host
+            self._embed_proxy = QGraphicsProxyWidget(self)
+            self._embed_proxy.setWidget(host)
+            self._reposition_embed()
+        except Exception:
+            self._embed_proxy = None
+
+    def _on_text_input_changed(self):
+        if self._text_input_widget is None:
+            return
+        txt = self._text_input_widget.toPlainText()
+        self.params["prompt"] = txt
+        self.update()
+
+    def _reposition_embed(self):
+        """Phase 57 : responsive sizing — widget fills node width."""
+        if self._embed_proxy is None or self._embed_host is None:
             return
         n_sockets = max(len(self.input_sockets), len(self.output_sockets))
         socket_h = max(n_sockets, 1) * self.ROW_H
-        y = self.HEADER_H + socket_h + 4
-        self._audio_proxy.setPos(6, y)
+        param_h = len(self.spec.params) * self.PARAM_H
+        # Position : after header + sockets + param labels
+        y = self.HEADER_H + socket_h + param_h + 4
+        # Width : full node width minus margins
+        inner_w = max(120, self.width - 12)
+        self._embed_host.setFixedWidth(inner_w)
+        # Height : let widget compute (already minimum set)
+        self._embed_proxy.setPos(6, y)
 
     def _resolve_audio_path(self) -> str | None:
         """Find audio file: disk cache <id>.wav or most recent in cache dir."""
@@ -690,6 +762,8 @@ class NodeItem(QGraphicsItem):
                 self.width = new_w
                 self.user_height_extra = new_h_extra
                 self._layout_sockets()
+                # Phase 57 : reposition embedded widgets (audio/text_input)
+                self._reposition_embed()
                 # Update connections liées (output socket position changes)
                 for sock in self.output_sockets + self.input_sockets:
                     for conn in sock.connections:
