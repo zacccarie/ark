@@ -47,7 +47,15 @@ class LoadImageFile(nn.Module):
                     arr = arr[None, ...]  # (1, H, W)
                 else:
                     arr = arr.transpose(2, 0, 1)  # (C, H, W)
-                return torch.from_numpy(arr).unsqueeze(0)  # (1, C, H, W)
+                t = torch.from_numpy(arr)
+                # Phase 77b : push miniature au node
+                ref = getattr(self, "_ark_node_ref", None)
+                if ref is not None:
+                    try:
+                        ref.set_preview_image(t.clamp(0, 1))
+                    except Exception:
+                        pass
+                return t.unsqueeze(0)  # (1, C, H, W)
         except Exception:
             pass
         # Fallback : noise déterministe par hash(path)
@@ -280,6 +288,7 @@ def h_load_image_file(node, in_shapes):
         mode=node.params.get("mode", "RGB"),
     )
     m._ark_node_id = getattr(node, "id", "lim")
+    m._ark_node_ref = node  # Phase 77b : preview push
     C = 3 if node.params.get("mode", "RGB") == "RGB" else 1
     S = int(node.params.get("size", 256))
     return m, (C, S, S)

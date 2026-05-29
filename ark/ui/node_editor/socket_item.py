@@ -27,6 +27,10 @@ def types_compatible(src_type: str, dst_type: str) -> bool:
     # number ↔ tensor compatibles (scalaire upcast)
     if {src_type, dst_type} == {"number", "tensor"}:
         return True
+    # Phase 77b : image/latent SONT des tensors sous-jacents → compatibles
+    _tensorish = {"tensor", "image", "latent"}
+    if src_type in _tensorish and dst_type in _tensorish:
+        return True
     return False
 
 

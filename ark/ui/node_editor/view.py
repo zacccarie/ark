@@ -26,6 +26,7 @@ class NodeEditorView(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)  # Phase 77b : drop fichiers → nodes
         self._panning = False
         self._pan_anchor = QPoint()
         self._search: SearchOverlay | None = None
@@ -169,6 +170,32 @@ class NodeEditorView(QGraphicsView):
         # Replace handle bottom-right
         if hasattr(self, "pan_handle"):
             self.pan_handle.reposition()
+
+    # ----- Drag & drop fichiers → nodes source (Phase 77b) -----
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasUrls():
+            super().dropEvent(event)
+            return
+        win = self.window()
+        scene_pos = self.mapToScene(event.position().toPoint())
+        if hasattr(win, "_handle_file_drop"):
+            win._handle_file_drop(event.mimeData().urls(),
+                                       scene_pos.x(), scene_pos.y())
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
     # ----- Double-clic empty space → search overlay -----
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:

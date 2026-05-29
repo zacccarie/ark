@@ -153,13 +153,33 @@ class ArkBridge(QObject):
                                                   "", flt)
         if not path:
             return ""
-        # Applique au node
+        # Applique au node + preview immédiate si image
         if self._mw is not None and hasattr(self._mw, "scene"):
             for it in self._mw.scene.items():
                 if getattr(it, "id", None) == node_id and hasattr(it, "set_param"):
                     it.set_param(param, path)
+                    self._maybe_preview_image(it, path)
                     break
         return path
+
+    def _maybe_preview_image(self, node, path: str):
+        """Phase 77b : si fichier image, affiche miniature dans le node direct."""
+        low = path.lower()
+        if not low.endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif",
+                                ".webp", ".tiff")):
+            return
+        try:
+            from PIL import Image
+            import numpy as np
+            import torch
+            img = Image.open(path).convert("RGB")
+            img.thumbnail((256, 256))
+            arr = np.array(img).astype("float32") / 255.0
+            t = torch.from_numpy(arr.transpose(2, 0, 1))
+            if hasattr(node, "set_preview_image"):
+                node.set_preview_image(t.clamp(0, 1))
+        except Exception:
+            pass
 
     @Slot(str, str, "QVariant")
     def set_node_param(self, node_id: str, name: str, value: Any):

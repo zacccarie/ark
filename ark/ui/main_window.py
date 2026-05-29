@@ -360,18 +360,26 @@ class MainWindow(QMainWindow):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        from ark.core.format import load_scene
         urls = event.mimeData().urls()
-        spawned = 0
-        # Position de drop → coords scène
+        if not urls:
+            event.ignore()
+            return
         try:
-            vp_pos = self.view.mapFromGlobal(event.position().toPoint()
-                                                 if hasattr(event, "position")
-                                                 else self.cursor().pos())
+            vp_pos = self.view.mapFromGlobal(self.cursor().pos())
             base = self.view.mapToScene(vp_pos)
             bx, by = base.x(), base.y()
         except Exception:
             bx, by = 0.0, 200.0
+        if self._handle_file_drop(urls, bx, by):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _handle_file_drop(self, urls, bx: float, by: float) -> bool:
+        """Phase 77b : crée des nodes source depuis fichiers déposés.
+        Retourne True si ≥1 node créé (ou archi chargée)."""
+        from ark.core.format import load_scene
+        spawned = 0
         for url in urls:
             path = url.toLocalFile()
             low = path.lower()
@@ -383,8 +391,7 @@ class MainWindow(QMainWindow):
                     self._current_file = path
                     self.statusBar().showMessage(
                         f"✓ Architecture chargée : {path}", 4000)
-                    event.acceptProposedAction()
-                    return
+                    return True
                 except Exception:
                     pass
             # 2. .json data → load_json node
@@ -413,9 +420,8 @@ class MainWindow(QMainWindow):
         if spawned:
             self.statusBar().showMessage(
                 f"✓ {spawned} fichier(s) → node(s) source", 4000)
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+            return True
+        return False
 
     def _is_ark_json(self, path: str) -> bool:
         try:
