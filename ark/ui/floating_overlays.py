@@ -31,15 +31,15 @@ class IconButton(QPushButton):
     def __init__(self, glyph: str, tooltip: str, parent=None):
         super().__init__(glyph, parent)
         self.setToolTip(tooltip)
-        self.setFixedSize(40, 40)
+        self.setFixedSize(32, 32)
         self.setCheckable(True)
         self.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent;"
             f"  border: 1px solid transparent;"
-            f"  border-radius: {T.R_MEDIUM}px;"
+            f"  border-radius: {T.R_SMALL}px;"
             f"  color: {T.FG_TERTIARY};"
-            f"  font-size: 18px;"
+            f"  font-size: 14px;"
             f"  padding: 0;"
             f"}}"
             f"QPushButton:hover {{"
@@ -62,7 +62,7 @@ class LeftRail(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(56)
+        self.setFixedWidth(44)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"background-color: {T.BG_PANEL}; "
@@ -70,8 +70,8 @@ class LeftRail(QWidget):
         )
 
         v = QVBoxLayout(self)
-        v.setContentsMargins(8, 12, 8, 12)
-        v.setSpacing(6)
+        v.setContentsMargins(6, 8, 6, 8)
+        v.setSpacing(4)
 
         # Top section : panel toggles
         self.btn_palette = self._add_icon(v, "⊞", "Palette de nodes", "palette")
@@ -134,20 +134,21 @@ class ActionBar(QWidget):
         self.setGraphicsEffect(sh)
 
         h = QHBoxLayout(self)
-        h.setContentsMargins(8, 6, 8, 6)
-        h.setSpacing(6)
+        h.setContentsMargins(6, 4, 6, 4)
+        h.setSpacing(4)
 
-        # Extensions button — icon only pour compact
-        self.btn_ext = QPushButton("⊞", self)
-        self.btn_ext.setFixedSize(36, 36)
+        # Extensions button — labeled
+        self.btn_ext = QPushButton("Extensions", self)
+        self.btn_ext.setFixedHeight(28)
         self.btn_ext.setToolTip("Gérer les extensions / templates")
         self.btn_ext.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent;"
             f"  border: 1px solid {T.BORDER_DEFAULT};"
-            f"  border-radius: {T.R_MEDIUM}px;"
+            f"  border-radius: {T.R_SMALL}px;"
             f"  color: {T.FG_SECONDARY};"
-            f"  font-size: 16px;"
+            f"  font-size: {T.FS_LABEL}px;"
+            f"  padding: 0 10px;"
             f"}}"
             f"QPushButton:hover {{ background: {T.BG_HIGHLIGHT}; "
             f"  color: {T.FG_PRIMARY}; }}"
@@ -155,26 +156,32 @@ class ActionBar(QWidget):
         self.btn_ext.clicked.connect(self.extensions_clicked.emit)
         h.addWidget(self.btn_ext)
 
-        # Batch count spinbox
+        # Batch label + spinbox
+        batch_lbl = QLabel("Batch", self)
+        batch_lbl.setStyleSheet(
+            f"color: {T.FG_TERTIARY}; font-size: {T.FS_MICRO}px; "
+            "text-transform: uppercase; letter-spacing: 1px;")
+        h.addWidget(batch_lbl)
         self.batch_spin = QSpinBox(self)
         self.batch_spin.setRange(1, 1000)
         self.batch_spin.setValue(1)
-        self.batch_spin.setFixedWidth(80)
+        self.batch_spin.setFixedWidth(60)
+        self.batch_spin.setFixedHeight(28)
         self.batch_spin.setToolTip("Nombre d'itérations / batches")
         h.addWidget(self.batch_spin)
 
-        # PRIMARY RUN button — bleu
+        # PRIMARY RUN button — bleu compact
         self.btn_run = QPushButton("▶  Compiler", self)
+        self.btn_run.setFixedHeight(30)
         self.btn_run.setStyleSheet(
             f"QPushButton {{"
             f"  background-color: {T.ACCENT_BLUE};"
             f"  color: white;"
             f"  border: 1px solid {T.ACCENT_BLUE};"
-            f"  border-radius: {T.R_MEDIUM}px;"
-            f"  padding: 8px 18px;"
+            f"  border-radius: {T.R_SMALL}px;"
+            f"  padding: 4px 14px;"
             f"  font-weight: 700;"
-            f"  font-size: {T.FS_BODY}px;"
-            f"  min-height: 32px;"
+            f"  font-size: {T.FS_LABEL}px;"
             f"  letter-spacing: -0.2px;"
             f"}}"
             f"QPushButton:hover {{ background-color: {T.ACCENT_BLUE_HOVER}; }}"
@@ -183,58 +190,59 @@ class ActionBar(QWidget):
         self.btn_run.clicked.connect(self.compile_clicked.emit)
         h.addWidget(self.btn_run)
 
-        # Mode dropdown next to run — width auto adaptée au contenu
+        # Mode dropdown
         self.mode_combo = QComboBox(self)
         self.mode_combo.addItems(["Compiler", "Entraîner", "Bench"])
-        self.mode_combo.setMinimumWidth(140)
-        self.mode_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.mode_combo.setFixedWidth(112)
+        self.mode_combo.setFixedHeight(28)
         self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
         h.addWidget(self.mode_combo)
 
-        # Cancel button (danger)
-        self.btn_cancel = QPushButton("✕", self)
-        self.btn_cancel.setFixedSize(36, 36)
+        # Cancel button (danger) — labeled
+        self.btn_cancel = QPushButton("Stop", self)
+        self.btn_cancel.setFixedHeight(28)
         self.btn_cancel.setToolTip("Arrêter")
         self.btn_cancel.setStyleSheet(
             f"QPushButton {{"
-            f"  background-color: {T.ACCENT_DIM};"
+            f"  background-color: transparent;"
             f"  color: {T.ACCENT};"
             f"  border: 1px solid {T.ACCENT_DIM};"
-            f"  border-radius: {T.R_MEDIUM}px;"
-            f"  font-weight: 700; font-size: 14px;"
+            f"  border-radius: {T.R_SMALL}px;"
+            f"  font-weight: 700; font-size: {T.FS_LABEL}px;"
+            f"  padding: 0 10px;"
             f"}}"
             f"QPushButton:hover {{ background-color: {T.ACCENT}; color: white; }}"
         )
         self.btn_cancel.clicked.connect(self.stop_clicked.emit)
         h.addWidget(self.btn_cancel)
 
-        # Active count badge — compact + contraste plus fort
-        self.active_lbl = QLabel("0", self)
+        # Active count badge — compact
+        self.active_lbl = QLabel("0 actif", self)
         self.active_lbl.setToolTip("Tâches actives")
         self.active_lbl.setStyleSheet(
             f"color: {T.FG_SECONDARY}; "
             f"font-family: {T.FONT_MONO_FAMILY}; "
-            f"font-size: {T.FS_BODY}px; "
+            f"font-size: {T.FS_MICRO}px; "
             f"font-weight: 700; "
-            f"padding: 4px 10px; "
+            f"padding: 2px 6px; "
             f"background: {T.BG_PANEL_RAISED}; "
             f"border: 1px solid {T.BORDER_DEFAULT}; "
-            f"border-radius: {T.R_MEDIUM}px;"
+            f"border-radius: {T.R_SMALL}px;"
         )
         h.addWidget(self.active_lbl)
 
-        # Toggle inspector button right end
-        self.btn_inspector_toggle = QPushButton("◫", self)
-        self.btn_inspector_toggle.setFixedSize(36, 36)
+        # Toggle inspector button — labeled
+        self.btn_inspector_toggle = QPushButton("Insp.", self)
+        self.btn_inspector_toggle.setFixedHeight(28)
         self.btn_inspector_toggle.setToolTip("Toggle Inspector")
         self.btn_inspector_toggle.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent;"
             f"  border: 1px solid {T.BORDER_DEFAULT};"
-            f"  border-radius: {T.R_MEDIUM}px;"
+            f"  border-radius: {T.R_SMALL}px;"
             f"  color: {T.FG_SECONDARY};"
-            f"  font-size: 14px;"
+            f"  font-size: {T.FS_LABEL}px;"
+            f"  padding: 0 10px;"
             f"}}"
             f"QPushButton:hover {{ background: {T.BG_HIGHLIGHT}; color: {T.FG_PRIMARY}; }}"
         )
@@ -262,22 +270,26 @@ class StatsOverlay(QWidget):
         self.setStyleSheet(
             f"StatsOverlay {{ "
             f"  background-color: rgba(24, 24, 27, 200); "
-            f"  border-radius: {T.R_MEDIUM}px; "
-            f"  padding: 6px 10px; "
+            f"  border-radius: {T.R_SMALL}px; "
+            f"  padding: 2px 6px; "
             f"}}"
         )
 
-        v = QVBoxLayout(self)
-        v.setContentsMargins(10, 8, 10, 8)
-        v.setSpacing(2)
+        h = QHBoxLayout(self)
+        h.setContentsMargins(6, 2, 6, 2)
+        h.setSpacing(8)
 
-        self.t_lbl = self._make_lbl("T: 0.00s")
-        self.i_lbl = self._make_lbl("I: 0")
-        self.n_lbl = self._make_lbl("N: 0 [0]")
-        self.v_lbl = self._make_lbl("V: 0")
-        self.fps_lbl = self._make_lbl("FPS: 60")
-        for lbl in (self.t_lbl, self.i_lbl, self.n_lbl, self.v_lbl, self.fps_lbl):
-            v.addWidget(lbl)
+        # Phase 58 : compact 1-line stats — nodes + FPS only
+        self.n_lbl = self._make_lbl("N 0")
+        self.fps_lbl = self._make_lbl("60fps")
+        for lbl in (self.n_lbl, self.fps_lbl):
+            h.addWidget(lbl)
+        # Hidden labels kept for API compat (push_* methods write into them)
+        self.t_lbl = self._make_lbl("")
+        self.i_lbl = self._make_lbl("")
+        self.v_lbl = self._make_lbl("")
+        for lbl in (self.t_lbl, self.i_lbl, self.v_lbl):
+            lbl.hide()
 
         self._t0 = time.perf_counter()
         self._frame_count = 0
@@ -291,9 +303,9 @@ class StatsOverlay(QWidget):
     def _make_lbl(self, text):
         l = QLabel(text, self)
         l.setStyleSheet(
-            f"color: {T.FG_SECONDARY}; "
+            f"color: {T.FG_TERTIARY}; "
             f"font-family: {T.FONT_MONO_FAMILY}; "
-            f"font-size: 11px; "
+            f"font-size: 9px; "
             f"font-weight: 600; "
             f"background: transparent;"
         )
@@ -301,19 +313,22 @@ class StatsOverlay(QWidget):
 
     def _tick(self):
         elapsed = time.perf_counter() - self._t0
-        self.t_lbl.setText(f"T: {elapsed:.2f}s")
+        self.t_lbl.setText(f"{elapsed:.0f}s")
 
     def set_iter(self, i: int):
-        self.i_lbl.setText(f"I: {i}")
+        self.i_lbl.setText(f"I{i}")
 
     def set_nodes(self, n: int, selected: int = 0):
-        self.n_lbl.setText(f"N: {n} [{selected}]")
+        if selected:
+            self.n_lbl.setText(f"N {n}·{selected}")
+        else:
+            self.n_lbl.setText(f"N {n}")
 
     def set_val(self, v):
-        self.v_lbl.setText(f"V: {v}")
+        self.v_lbl.setText(f"V{v}")
 
     def set_fps(self, fps: float):
-        self.fps_lbl.setText(f"FPS: {fps:.1f}")
+        self.fps_lbl.setText(f"{fps:.0f}fps")
 
     def reset_timer(self):
         self._t0 = time.perf_counter()
@@ -447,22 +462,21 @@ class ViewControls(QWidget):
         self.setGraphicsEffect(sh)
 
         h = QHBoxLayout(self)
-        h.setContentsMargins(6, 4, 6, 4)
-        h.setSpacing(4)
+        h.setContentsMargins(4, 3, 4, 3)
+        h.setSpacing(3)
 
-        # Tool selector — width auto évite truncation
+        # Tool selector — compact
         self.tool_combo = QComboBox(self)
-        self.tool_combo.addItems(["Select", "Pan", "Box select"])
-        self.tool_combo.setMinimumWidth(140)
-        self.tool_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.tool_combo.addItems(["Select", "Pan", "Box"])
+        self.tool_combo.setFixedWidth(80)
+        self.tool_combo.setFixedHeight(24)
         self.tool_combo.currentTextChanged.connect(
             lambda t: self.tool_changed.emit(t.split()[-1].lower()))
         h.addWidget(self.tool_combo)
 
         # Fit-to-view button
-        self.btn_fit = QPushButton("⊕", self)
-        self.btn_fit.setFixedSize(32, 32)
+        self.btn_fit = QPushButton("Fit", self)
+        self.btn_fit.setFixedHeight(24)
         self.btn_fit.setToolTip("Centrer + ajuster vue")
         self.btn_fit.setStyleSheet(self._icon_style())
         h.addWidget(self.btn_fit)
@@ -472,23 +486,24 @@ class ViewControls(QWidget):
         self.zoom_combo.addItems(["25%", "50%", "75%", "100%", "150%", "200%",
                                          "400%"])
         self.zoom_combo.setCurrentText("100%")
-        self.zoom_combo.setFixedWidth(72)
+        self.zoom_combo.setFixedWidth(58)
+        self.zoom_combo.setFixedHeight(24)
         self.zoom_combo.currentTextChanged.connect(self._on_zoom)
         h.addWidget(self.zoom_combo)
 
         # Minimap toggle
-        self.btn_map = QPushButton("⊞", self)
-        self.btn_map.setFixedSize(32, 32)
+        self.btn_map = QPushButton("Map", self)
+        self.btn_map.setFixedHeight(24)
         self.btn_map.setCheckable(True)
         self.btn_map.setChecked(True)
-        self.btn_map.setToolTip("Minimap")
+        self.btn_map.setToolTip("Toggle minimap")
         self.btn_map.setStyleSheet(self._icon_style())
         self.btn_map.toggled.connect(self.minimap_toggled.emit)
         h.addWidget(self.btn_map)
 
         # Snap toggle
-        self.btn_snap = QPushButton("⊟", self)
-        self.btn_snap.setFixedSize(32, 32)
+        self.btn_snap = QPushButton("Snap", self)
+        self.btn_snap.setFixedHeight(24)
         self.btn_snap.setCheckable(True)
         self.btn_snap.setToolTip("Snap to grid")
         self.btn_snap.setStyleSheet(self._icon_style())
@@ -499,10 +514,11 @@ class ViewControls(QWidget):
         return (
             f"QPushButton {{"
             f"  background: transparent;"
-            f"  border: 1px solid transparent;"
+            f"  border: 1px solid {T.BORDER_DEFAULT};"
             f"  border-radius: {T.R_SMALL}px;"
             f"  color: {T.FG_SECONDARY};"
-            f"  font-size: 14px;"
+            f"  font-size: {T.FS_LABEL}px;"
+            f"  padding: 0 8px;"
             f"}}"
             f"QPushButton:hover {{ background: {T.BG_HIGHLIGHT}; "
             f"  color: {T.FG_PRIMARY}; }}"

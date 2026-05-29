@@ -14,7 +14,7 @@ class Minimap(QWidget):
         super().__init__(parent)
         self._scene = scene
         self._view = view
-        self.setFixedSize(220, 160)
+        self.setFixedSize(180, 120)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"Minimap {{ "

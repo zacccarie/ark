@@ -326,26 +326,33 @@ class MainWindow(QMainWindow):
         if host is None:
             return
         host_rect = host.rect()
-        margin = 16
+        margin = 8
+        # Phase 58 : start overlays BELOW tab bar so they don't eat it
+        try:
+            tabbar_h = self.tabs.tabBar().height()
+        except Exception:
+            tabbar_h = 32
+        top_y = tabbar_h + 6
 
-        # LeftRail : full height left
+        # LeftRail : starts under tab bar
         rail_w = self._left_rail.width()
-        self._left_rail.setGeometry(0, 0, rail_w, host_rect.height())
+        self._left_rail.setGeometry(
+            0, top_y, rail_w, host_rect.height() - top_y)
 
-        # ActionBar : top-right
+        # ActionBar : top-right under tab bar
         ab = self._action_bar
         ab.adjustSize()
         ab_w = ab.sizeHint().width()
         ab_h = ab.sizeHint().height()
-        ab.setGeometry(host_rect.width() - ab_w - margin, margin, ab_w, ab_h)
+        ab.setGeometry(host_rect.width() - ab_w - margin, top_y, ab_w, ab_h)
 
         # GlobalProgress (Phase 49) : top-center sous ActionBar
         if hasattr(self, "_global_progress"):
             gp = self._global_progress
-            gp_w = 360
+            gp_w = 320
             gp.setGeometry(rail_w + margin,
-                              margin,
-                              gp_w, 36)
+                              top_y,
+                              gp_w, 28)
 
         # StatsOverlay : bottom-left (above left rail bottom icons)
         so = self._stats_overlay
