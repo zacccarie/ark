@@ -174,13 +174,25 @@ class ArkBridge(QObject):
 
     @Slot()
     def open_extensions(self):
-        if self._mw and hasattr(self._mw, "_open_extensions"):
-            self._mw._open_extensions()
+        # Phase 64 : Extensions button → templates browser (most useful action)
+        if self._mw is None:
+            return
+        for attr in ("_open_extensions", "_on_browse_templates"):
+            fn = getattr(self._mw, attr, None)
+            if callable(fn):
+                fn()
+                return
 
     @Slot()
     def open_settings(self):
-        if self._mw and hasattr(self._mw, "_open_settings"):
-            self._mw._open_settings()
+        if self._mw is None:
+            return
+        for attr in ("_open_settings", "_on_open_shortcuts",
+                          "_on_open_help_page"):
+            fn = getattr(self._mw, attr, None)
+            if callable(fn):
+                fn()
+                return
 
     @Slot()
     def toggle_inspector(self):

@@ -219,25 +219,30 @@ class MainWindow(QMainWindow):
                 web = False  # fallback
         self._stats_overlay = StatsOverlay(host)
         self._view_controls = ViewControls(host)
-        if web:
-            self._view_controls.hide()
         self._global_progress = GlobalProgress(host)
         self._global_progress.hide()
         # Phase 50 : minimap bottom-right above ViewControls
         self._minimap = Minimap(self.scene, self.view, host)
-        self._minimap.show()
+        # Phase 64 : in web mode, hide ALL legacy floating Qt overlays
+        # (LeftRail / StatsOverlay / ViewControls / Minimap / GlobalProgress)
+        if web:
+            for w in (self._left_rail, self._stats_overlay,
+                          self._view_controls, self._minimap):
+                w.hide()
+        else:
+            self._minimap.show()
 
-        raised = [self._left_rail, self._stats_overlay,
-                       self._view_controls, self._global_progress, self._minimap]
+        raised = [self._global_progress]
         if not web:
-            raised.append(self._action_bar)
+            raised += [self._left_rail, self._stats_overlay,
+                            self._view_controls, self._minimap,
+                            self._action_bar]
         for w in raised:
             w.raise_()
-        shown = [self._left_rail, self._stats_overlay, self._view_controls]
         if not web:
-            shown.append(self._action_bar)
-        for w in shown:
-            w.show()
+            for w in (self._left_rail, self._stats_overlay,
+                          self._view_controls, self._action_bar):
+                w.show()
 
         # Wire ActionBar signals (Qt mode only)
         if not web:
