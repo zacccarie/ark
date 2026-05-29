@@ -57,6 +57,21 @@ class WebPanel(QWidget):
             self.view = None
             return
         self.view = QWebEngineView(self)
+        # Phase 71b : HTML form inputs need keyboard focus on click.
+        self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        try:
+            from PySide6.QtWebEngineCore import QWebEngineSettings
+            s = self.view.settings()
+            s.setAttribute(
+                QWebEngineSettings.WebAttribute.FocusOnNavigationEnabled, True)
+            s.setAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard,
+                True)
+            s.setAttribute(
+                QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
+                True)
+        except Exception:
+            pass
         layout.addWidget(self.view)
         # Channel
         self.channel = QWebChannel(self.view.page())

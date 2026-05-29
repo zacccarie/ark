@@ -204,24 +204,60 @@ function ParamRow({
       </div>
     );
   }
+  if (spec.kind === "int" || spec.kind === "float") {
+    return (
+      <NumberRow spec={spec} value={value} onChange={onChange} />
+    );
+  }
   return (
     <div>
       <label className="text-xs text-fg-tertiary block mb-1">{spec.name}</label>
       <input
-        type={spec.kind === "int" || spec.kind === "float" ? "number" : "text"}
+        type="text"
         value={value ?? ""}
-        step={spec.kind === "float" ? "0.001" : undefined}
-        min={spec.min}
-        max={spec.max}
-        onChange={(e) => {
-          const v =
-            spec.kind === "int"
-              ? parseInt(e.target.value)
-              : spec.kind === "float"
-              ? parseFloat(e.target.value)
-              : e.target.value;
-          onChange(v);
-        }}
+        onChange={(e) => onChange(e.target.value)}
+        className="ark-input"
+      />
+    </div>
+  );
+}
+
+// Number input with local string buffer so intermediate states
+// (empty, "-", "1.") don't fight a controlled numeric value.
+function NumberRow({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: ParamSpec;
+  value: any;
+  onChange: (v: any) => void;
+}) {
+  const [buf, setBuf] = useState<string>(
+    value === undefined || value === null ? "" : String(value)
+  );
+  // Resync if external value changes (e.g. node reselected)
+  useEffect(() => {
+    setBuf(value === undefined || value === null ? "" : String(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    setBuf(raw);
+    if (raw === "" || raw === "-" || raw === "." || raw === "-.") return;
+    const n = spec.kind === "int" ? parseInt(raw) : parseFloat(raw);
+    if (Number.isFinite(n)) onChange(n);
+  };
+
+  return (
+    <div>
+      <label className="text-xs text-fg-tertiary block mb-1">{spec.name}</label>
+      <input
+        type="number"
+        value={buf}
+        step={spec.kind === "float" ? "0.001" : "1"}
+        min={spec.min ?? undefined}
+        max={spec.max ?? undefined}
+        onChange={(e) => commit(e.target.value)}
         className="ark-input"
       />
     </div>
