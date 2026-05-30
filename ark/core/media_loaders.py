@@ -282,15 +282,18 @@ class MultiImageLoader(nn.Module):
 # ============================================================
 
 def h_load_image_file(node, in_shapes):
+    # size=0 => garder résolution native au runtime, mais pour la propagation
+    # de shape au compile il faut une valeur > 0 (sinon Linear(0,...) dégénéré)
+    raw_size = int(node.params.get("size") or 0)
     m = LoadImageFile(
         path=node.params.get("path", ""),
-        size=int(node.params.get("size", 0)),
+        size=raw_size,
         mode=node.params.get("mode", "RGB"),
     )
     m._ark_node_id = getattr(node, "id", "lim")
     m._ark_node_ref = node  # Phase 77b : preview push
     C = 3 if node.params.get("mode", "RGB") == "RGB" else 1
-    S = int(node.params.get("size", 256))
+    S = raw_size if raw_size > 0 else 256
     return m, (C, S, S)
 
 

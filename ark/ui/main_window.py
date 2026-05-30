@@ -855,7 +855,13 @@ class MainWindow(QMainWindow):
                 try:
                     import torch
                     t_fwd = time.perf_counter()
-                    dummy = torch.zeros(1, 4, 64, 64)
+                    # Phase 80b : dummy dérivé de la vraie input_shape
+                    in_sh = getattr(self._compiled, "input_shape", None)
+                    if isinstance(in_sh, tuple) and len(in_sh) >= 1 and \
+                            all(isinstance(d, int) and d > 0 for d in in_sh):
+                        dummy = torch.zeros(1, *in_sh)
+                    else:
+                        dummy = torch.zeros(1, 4, 64, 64)
                     out = self._compiled.model(dummy)
                     if isinstance(out, tuple):
                         out = out[0]
@@ -1060,10 +1066,14 @@ class MainWindow(QMainWindow):
         )
 
     def _on_epoch(self, info: dict):
+        vl = info.get("val_loss")
+        va = info.get("val_acc")
+        vl_s = f"{vl:.4f}" if vl is not None else "—"
+        va_s = f"{va*100:.2f}%" if va is not None else "—"
         msg = (f"epoch {info['epoch']}/{info['epochs']} — "
-               f"train_loss={info['train_loss']:.4f} train_acc={info['train_acc']*100:.2f}% · "
-               f"val_loss={info['val_loss']:.4f if info['val_loss'] is not None else 0:.4f} "
-               f"val_acc={info['val_acc']*100 if info['val_acc'] else 0:.2f}% "
+               f"train_loss={info['train_loss']:.4f} "
+               f"train_acc={info['train_acc']*100:.2f}% · "
+               f"val_loss={vl_s} val_acc={va_s} "
                f"({info['elapsed']:.1f}s)")
         self.terminal.append_log(msg)
         self.statusBar().showMessage(msg, 4000)
