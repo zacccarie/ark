@@ -3,6 +3,7 @@ import { getBridge } from "@/lib/bridge";
 import {
   Blocks, Cpu, Activity, CheckCircle2, Rocket, RefreshCw,
   Check, Circle, Play, ChevronRight, FlaskConical, Loader2,
+  Gauge, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,29 @@ function fmtMetric(name?: string, v?: number | null): string {
   return v.toFixed(3);
 }
 
+// Bench (Phase 82)
+type BenchYou = {
+  name: string; n_params: number; params_str: string; param_mb: number;
+  flops: number; flops_str: string; latency_ms: number | null;
+  throughput: number | null; device: string; kind?: string;
+  kindLabel?: string; metric?: string; value?: number | null;
+  validated?: boolean;
+};
+type BenchRef = {
+  name: string; params: number; params_str: string; metric: string;
+  value: number; dataset: string; year: number; type: string;
+};
+type BenchData = {
+  status: string; you?: BenchYou; references?: BenchRef[]; error?: string;
+};
+
+// Métrique de bench : accuracy/top1 en %, perplexity brut
+function fmtBench(metric?: string, v?: number | null): string {
+  if (v == null) return "—";
+  if (metric === "perplexity") return v.toFixed(1);
+  return `${(v * 100).toFixed(1)}%`;
+}
+
 const STATE_META: Record<
   string,
   { label: string; box: string; dot: string }
@@ -98,6 +122,8 @@ export function WorkflowPanel() {
   const [model, setModel] = useState<ModelState | null>(null);
   const [testing, setTesting] = useState(false);
   const [testRes, setTestRes] = useState<TestResult | null>(null);
+  const [bench, setBench] = useState<BenchData | null>(null);
+  const [benching, setBenching] = useState(false);
 
   const refresh = useCallback(async () => {
     const b = bridge || (await getBridge());
@@ -139,6 +165,17 @@ export function WorkflowPanel() {
     }
     setTesting(false);
     setTimeout(refresh, 400);
+  };
+
+  const doBench = async () => {
+    if (!bridge || benching) return;
+    setBenching(true);
+    try {
+      setBench(JSON.parse(await bridge.benchmark_model()));
+    } catch {
+      /* noop */
+    }
+    setBenching(false);
   };
 
   if (!state) {
@@ -296,6 +333,105 @@ export function WorkflowPanel() {
             </div>
           );
         })()}
+
+      {/* Benchmark — Phase 82 : params/FLOPs/latence + comparaison */}
+      <div className="px-3 py-2 border-b border-border-subtle">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Gauge className="w-3.5 h-3.5 text-fg-tertiary" />
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-fg-secondary">
+            Benchmark
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={doBench}
+            disabled={benching}
+            className="text-[10px] px-2 py-1 rounded-sm border border-border text-fg-secondary hover:bg-bg-raised flex items-center gap-1 disabled:opacity-50"
+            title="Mesure params, FLOPs, latence sur le device courant"
+          >
+            {benching ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <BarChart3 className="w-3 h-3" />
+            )}
+            Mesurer
+          </button>
+        </div>
+
+        {bench?.status === "error" && (
+          <p className="text-[10px] text-warn">{bench.error}</p>
+        )}
+
+        {bench?.status === "ok" && bench.you && (
+          <>
+            {/* Métriques brutes */}
+            <div className="grid grid-cols-4 gap-1 mb-2">
+              {[
+                ["params", bench.you.params_str],
+                ["FLOPs", bench.you.flops_str],
+                ["latence", bench.you.latency_ms != null ? `${bench.you.latency_ms}ms` : "—"],
+                ["débit", bench.you.throughput != null ? `${bench.you.throughput}/s` : "—"],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-sm bg-bg-raised border border-border-subtle px-1.5 py-1">
+                  <div className="text-[8px] uppercase tracking-wider text-fg-disabled">{k}</div>
+                  <div className="text-[11px] font-mono text-fg font-bold truncate">{v}</div>
+                </div>
+              ))}
+            </div>
+            <div className="text-[9px] text-fg-disabled mb-1.5">
+              {bench.you.param_mb} MB · {bench.you.device}
+            </div>
+
+            {/* Table de comparaison (Pareto params↔précision) */}
+            {(() => {
+              const rows = [
+                ...(bench.references || []).map((r) => ({
+                  name: r.name, params: r.params, params_str: r.params_str,
+                  metric: r.metric, value: r.value as number | null,
+                  type: r.type, you: false,
+                })),
+                {
+                  name: bench.you!.name, params: bench.you!.n_params,
+                  params_str: bench.you!.params_str,
+                  metric: bench.you!.metric || "accuracy",
+                  value: bench.you!.value ?? null,
+                  type: bench.you!.kindLabel || "—", you: true,
+                },
+              ].sort((a, b) => a.params - b.params);
+              return (
+                <div className="rounded-sm border border-border-subtle overflow-hidden">
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 bg-bg-raised text-[8px] uppercase tracking-wider text-fg-disabled">
+                    <span>modèle</span>
+                    <span className="text-right">params</span>
+                    <span className="text-right">score</span>
+                  </div>
+                  {rows.map((r, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 text-[10px] items-center border-t border-border-subtle",
+                        r.you ? "bg-primary/10" : ""
+                      )}
+                    >
+                      <span className={cn("truncate", r.you ? "text-primary font-bold" : "text-fg-secondary")}>
+                        {r.you && "▸ "}{r.name}
+                        <span className="text-fg-disabled ml-1">· {r.type}</span>
+                      </span>
+                      <span className="text-right font-mono text-fg-tertiary">{r.params_str}</span>
+                      <span className={cn("text-right font-mono", r.you ? "text-primary" : "text-fg-tertiary")}>
+                        {fmtBench(r.metric, r.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <p className="text-[9px] text-fg-disabled mt-1">
+              Trié par taille. Score = métrique de validité du type (acc% / perplexity).
+              Ton modèle a besoin du Test (held-out) pour afficher son score réel.
+            </p>
+          </>
+        )}
+      </div>
 
       {/* Timeline */}
       <div className="flex items-center px-3 py-3 border-b border-border-subtle overflow-x-auto">

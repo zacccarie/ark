@@ -829,6 +829,41 @@ class ArkBridge(QObject):
         except Exception as e:
             return _json.dumps({"status": "error", "error": str(e)})
 
+    @Slot(result=str)
+    def benchmark_model(self):
+        """Phase 82 : mesure params/FLOPs/latence + table de référence."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return _json.dumps({"status": "error", "error": "no scene"})
+        try:
+            from ark.core.graph_compiler import compile_scene
+            from ark.core.bench import benchmark_model, reference_table
+            from ark.core.trainer import pick_device
+            from ark.core.weights import (signature_from_scene, weights_info)
+            from ark.core.model_kind import detect_kind_from_scene
+            compiled = compile_scene(self._mw.scene, num_classes=10)
+            b = benchmark_model(compiled, device=pick_device())
+            spec = detect_kind_from_scene(self._mw.scene)
+            sig = getattr(compiled, "signature", None) or \
+                signature_from_scene(self._mw.scene)
+            info = weights_info(sig)
+            you = dict(b)
+            you["name"] = "Ton modèle"
+            you["kind"] = spec.kind
+            you["kindLabel"] = spec.label
+            you["metric"] = spec.primary_metric
+            you["value"] = info.get("test_metric") or info.get("val_acc")
+            you["validated"] = info.get("validated", False)
+            if getattr(self._mw, "terminal", None):
+                self._mw.terminal.append_log(
+                    f"[bench] {you['params_str']} params · "
+                    f"{you['flops_str']} FLOPs · {you['latency_ms']}ms · "
+                    f"{you['device']}")
+            return _json.dumps({"status": "ok", "you": you,
+                                "references": reference_table()})
+        except Exception as e:
+            return _json.dumps({"status": "error", "error": str(e)})
+
     @Slot()
     def train_and_keep(self):
         """Phase 80 : entraîne la scène + persiste les poids (opérationnel)."""
