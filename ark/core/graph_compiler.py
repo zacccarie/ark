@@ -1039,4 +1039,16 @@ def compile_scene(scene, num_classes: int | None = None,
         model.shapes_by_id = dict(shapes_by_id)
     except Exception:
         pass
-    return CompiledGraph(model, in_sh, final_shape, num_classes)
+    # Phase 80 : auto-charge les poids entraînés si signature connue
+    loaded_trained = False
+    try:
+        from ark.core.weights import signature_from_scene, load_weights
+        sig = signature_from_scene(scene)
+        model._ark_signature = sig
+        loaded_trained = load_weights(model, sig)
+    except Exception:
+        sig = None
+    cg = CompiledGraph(model, in_sh, final_shape, num_classes)
+    cg.signature = sig
+    cg.loaded_trained = loaded_trained
+    return cg

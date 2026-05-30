@@ -835,6 +835,14 @@ class MainWindow(QMainWindow):
             self.terminal.append_log(f"[compile] Graph built in {t_compile:.1f}ms")
             self.terminal.append_log(f"[compile] Input  : {self._compiled.input_shape}")
             self.terminal.append_log(f"[compile] Output : {self._compiled.output_shape}")
+            # Phase 80 : indique vierge vs entraîné
+            if getattr(self._compiled, "loaded_trained", False):
+                self.terminal.append_log(
+                    "[compile] ✓ Poids ENTRAÎNÉS rechargés — modèle opérationnel")
+            else:
+                self.terminal.append_log(
+                    "[compile] ○ Modèle VIERGE (poids aléatoires). Entraîne "
+                    "(Ctrl+T) pour le rendre opérationnel.")
             # Détaille par node type
             from collections import Counter
             types = Counter(n.spec.name for n in nodes)
@@ -1060,14 +1068,34 @@ class MainWindow(QMainWindow):
         self.terminal.append_log(msg)
         self.statusBar().showMessage(msg, 4000)
         # Phase 49 : final epoch → set ok
-        if hasattr(self, "_global_progress") and info.get("epoch") == info.get("epochs"):
-            from PySide6.QtCore import QTimer
-            self._global_progress.set_progress(1.0, "Trained ✓", "ok")
-            QTimer.singleShot(3500, self._global_progress.hide)
+        if info.get("epoch") == info.get("epochs"):
+            if hasattr(self, "_global_progress"):
+                from PySide6.QtCore import QTimer
+                self._global_progress.set_progress(1.0, "Trained ✓", "ok")
+                QTimer.singleShot(3500, self._global_progress.hide)
             # Mark all training nodes ok
             for n in self.scene.nodes():
                 if n.status == "training":
                     n.set_status("ok")
+            # Phase 80 : PERSISTE les poids entraînés + marque opérationnel
+            try:
+                from ark.core.weights import save_weights, mark_operational
+                sig = getattr(self._compiled, "signature", None) or \
+                    getattr(self._compiled.model, "_ark_signature", None)
+                if sig:
+                    val_acc = float(info.get("val_acc") or info.get("train_acc") or 0)
+                    save_weights(self._compiled.model, sig,
+                                     meta={"val_acc": val_acc})
+                    mark_operational(sig, val_acc)
+                    self.terminal.append_log(
+                        f"[train] ✓ Poids sauvegardés (sig {sig}) · "
+                        f"modèle OPÉRATIONNEL · acc {val_acc*100:.1f}%")
+                    # notifie le bridge web (badge workflow)
+                    if getattr(self, "_web_bridge", None) is not None:
+                        self._web_bridge.emit_log(
+                            f"[model] opérationnel · acc {val_acc*100:.1f}%")
+            except Exception as e:
+                self.terminal.append_log(f"[train] save weights warn: {e}")
 
     def _on_stop(self):
         if hasattr(self, "_worker") and self._worker is not None:

@@ -29,9 +29,16 @@ const ICONS: Record<string, any> = {
   "check-circle": CheckCircle2, rocket: Rocket,
 };
 
+type ModelState = {
+  state: "empty" | "blank" | "trained" | "operational";
+  val_acc?: number;
+  n_params?: number;
+};
+
 export function WorkflowPanel() {
   const [bridge, setBridge] = useState<any>(null);
   const [state, setState] = useState<State | null>(null);
+  const [model, setModel] = useState<ModelState | null>(null);
 
   const refresh = useCallback(async () => {
     const b = bridge || (await getBridge());
@@ -39,6 +46,11 @@ export function WorkflowPanel() {
     try {
       const s = JSON.parse(await b.workflow_get_state());
       setState(s);
+    } catch {
+      /* noop */
+    }
+    try {
+      setModel(JSON.parse(await b.model_state()));
     } catch {
       /* noop */
     }
@@ -85,6 +97,71 @@ export function WorkflowPanel() {
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Model state badge */}
+      {model && (
+        <div className="px-3 py-2 border-b border-border-subtle">
+          <div
+            className={cn(
+              "flex items-center gap-2 px-2.5 py-1.5 rounded-md border",
+              model.state === "operational"
+                ? "bg-primary/10 border-primary/50"
+                : model.state === "trained"
+                ? "bg-warn/10 border-warn/50"
+                : "bg-bg-raised border-border"
+            )}
+          >
+            <span
+              className={cn(
+                "w-2.5 h-2.5 rounded-full",
+                model.state === "operational"
+                  ? "bg-primary"
+                  : model.state === "trained"
+                  ? "bg-warn"
+                  : "bg-fg-disabled"
+              )}
+            />
+            <span className="text-xs font-bold text-fg">
+              {model.state === "operational"
+                ? "Modèle OPÉRATIONNEL"
+                : model.state === "trained"
+                ? "Modèle entraîné"
+                : model.state === "blank"
+                ? "Modèle vierge"
+                : "Scène vide"}
+            </span>
+            {model.val_acc != null && model.val_acc > 0 && (
+              <span className="text-[11px] text-primary font-mono ml-1">
+                acc {(model.val_acc * 100).toFixed(1)}%
+              </span>
+            )}
+            <div className="flex-1" />
+            {model.state !== "empty" && (
+              <button
+                onClick={() => {
+                  bridge?.train_and_keep?.();
+                  setTimeout(refresh, 800);
+                }}
+                className="ark-btn-primary text-[10px] px-2 py-1 flex items-center gap-1"
+              >
+                <Play className="w-3 h-3 fill-current" />
+                {model.state === "blank" ? "Entraîner & garder" : "Ré-entraîner"}
+              </button>
+            )}
+          </div>
+          {model.state === "operational" && (
+            <p className="text-[10px] text-primary mt-1 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> Prêt one-shot · les poids
+              sont rechargés à chaque compile.
+            </p>
+          )}
+          {model.state === "blank" && (
+            <p className="text-[10px] text-fg-disabled mt-1">
+              Poids aléatoires. Entraîne pour des prédictions réelles.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Timeline */}
       <div className="flex items-center px-3 py-3 border-b border-border-subtle overflow-x-auto">

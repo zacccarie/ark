@@ -767,6 +767,51 @@ class ArkBridge(QObject):
     # ============================================================
 
     @Slot(result=str)
+    def model_state(self):
+        """Phase 80 : état du modèle de la scène courante (vierge/entraîné/
+        opérationnel + accuracy)."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return _json.dumps({"state": "empty"})
+        try:
+            from ark.core.weights import signature_from_scene, weights_info
+            sig = signature_from_scene(self._mw.scene)
+            info = weights_info(sig)
+            if not info.get("exists"):
+                state = "blank"
+            elif info.get("operational"):
+                state = "operational"
+            else:
+                state = "trained"
+            return _json.dumps({
+                "state": state,
+                "signature": sig,
+                "val_acc": info.get("val_acc"),
+                "n_params": info.get("n_params"),
+                "saved_at": info.get("saved_at"),
+            })
+        except Exception as e:
+            return _json.dumps({"state": "blank", "error": str(e)})
+
+    @Slot()
+    def train_and_keep(self):
+        """Phase 80 : entraîne la scène + persiste les poids (opérationnel)."""
+        if self._mw and hasattr(self._mw, "_on_train"):
+            self._mw._on_train()
+
+    @Slot(result=str)
+    def clear_model_weights(self):
+        """Réinitialise le modèle (efface poids → redevient vierge)."""
+        import json as _json
+        try:
+            from ark.core.weights import signature_from_scene, clear_weights
+            sig = signature_from_scene(self._mw.scene)
+            clear_weights(sig)
+            return _json.dumps({"ok": True})
+        except Exception as e:
+            return _json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
     def workflow_get_state(self):
         """Analyse scène + état compile/train → phases lifecycle + checklist."""
         import json as _json
