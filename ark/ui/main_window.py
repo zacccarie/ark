@@ -1169,6 +1169,82 @@ class MainWindow(QMainWindow):
             self._web_bridge.emit_log(f"[model] test : {res.get('status')}")
         return res
 
+    def _collect_outputs(self, model, nodes) -> list:
+        """Phase 83 : récupère les sorties affichables des nodes viewer."""
+        md = getattr(model, "modules_dict", {})
+        nodes_by_id = {n.id: n for n in nodes}
+        outs = []
+        items = md.items() if hasattr(md, "items") else []
+        for nid, mod in items:
+            node = nodes_by_id.get(nid)
+            title = node.spec.title if node else nid[:8]
+            res = None
+            if getattr(mod, "last_generated", None):
+                res = str(mod.last_generated)
+            elif getattr(mod, "last_text", None):
+                res = str(mod.last_text)
+            elif getattr(mod, "last_value", None) not in ("", None):
+                res = str(mod.last_value)
+            elif getattr(mod, "last_predictions", None):
+                p0 = mod.last_predictions[0]
+                res = f"{p0['label']} ({p0['prob'] * 100:.0f}%)"
+            if res:
+                outs.append({"title": title, "result": res[:200]})
+        return outs
+
+    def _run_inference(self) -> dict:
+        """Phase 83 : exécute le modèle en production (compile + forward) et
+        renvoie les sorties affichables (mode outil ComfyUI)."""
+        from ark.core.graph_compiler import compile_scene, GraphCompileError
+        import torch
+        try:
+            compiled = compile_scene(self.scene, num_classes=10)
+        except GraphCompileError as e:
+            return {"status": "error", "error": str(e)}
+        ish = getattr(compiled, "input_shape", None)
+        try:
+            if isinstance(ish, tuple) and ish and \
+                    all(isinstance(d, int) and d > 0 for d in ish):
+                dummy = torch.zeros(1, *ish)
+            else:
+                dummy = torch.zeros(1, 1, 28, 28)
+            with torch.no_grad():
+                compiled.model(dummy)
+        except Exception as e:
+            return {"status": "error", "error": f"forward: {e}"}
+        outs = self._collect_outputs(compiled.model, self.scene.nodes())
+        self.terminal.append_log(f"[run] exécuté · {len(outs)} sortie(s)")
+        return {"status": "ok", "outputs": outs}
+
+    def _on_ship(self, name: str = "") -> dict:
+        """Phase 83 : passe le modèle VALIDÉ en production (opérationnel).
+        Gate : refuse si pas validé."""
+        from ark.core.weights import (signature_from_scene, weights_info,
+                                          mark_operational, can_ship)
+        sig = signature_from_scene(self.scene)
+        info = weights_info(sig)
+        if not can_ship(info):
+            self.terminal.append_log(
+                "[ship] refusé — modèle pas VALIDÉ. Lance « Tester » d'abord.")
+            return {"status": "not_validated",
+                    "msg": "Valide d'abord (Tester held-out)."}
+        metric = info.get("test_metric") or info.get("val_acc") or 0
+        extra = {"production_name": name} if name else None
+        mark_operational(sig, float(metric), extra=extra)
+        tag = f" « {name} »" if name else ""
+        self.terminal.append_log(
+            f"[ship] ✓ EN PRODUCTION{tag} · sig {sig} · "
+            f"métrique {metric}")
+        return {"status": "ok", "operational": True, "name": name}
+
+    def _on_unship(self) -> dict:
+        """Phase 83 : retire de production → revient à validé."""
+        from ark.core.weights import signature_from_scene, unmark_operational
+        sig = signature_from_scene(self.scene)
+        unmark_operational(sig)
+        self.terminal.append_log("[ship] retiré de production → validé")
+        return {"status": "ok", "operational": False}
+
     def _on_stop(self):
         if hasattr(self, "_worker") and self._worker is not None:
             self._worker.stop()

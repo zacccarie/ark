@@ -171,6 +171,19 @@ def mark_operational(signature: str, val_acc: float, extra: Optional[dict] = Non
     _write_meta(signature, m)
 
 
+def unmark_operational(signature: str):
+    """Phase 83 : retire de production → revient à 'validé'."""
+    m = _load_meta(signature)
+    m["operational"] = False
+    _write_meta(signature, m)
+
+
+def can_ship(info: dict) -> bool:
+    """Phase 83 : un modèle ne peut passer en production que s'il est VALIDÉ
+    (test held-out passé). Empêche de shipper un modèle non prouvé."""
+    return bool(info.get("exists") and info.get("validated"))
+
+
 def clear_weights(signature: str):
     for ext in (".pt", ".json"):
         p = WEIGHTS_DIR / f"{signature}{ext}"

@@ -124,6 +124,8 @@ export function WorkflowPanel() {
   const [testRes, setTestRes] = useState<TestResult | null>(null);
   const [bench, setBench] = useState<BenchData | null>(null);
   const [benching, setBenching] = useState(false);
+  const [runRes, setRunRes] = useState<any>(null);
+  const [running, setRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     const b = bridge || (await getBridge());
@@ -176,6 +178,38 @@ export function WorkflowPanel() {
       /* noop */
     }
     setBenching(false);
+  };
+
+  const doShip = async () => {
+    if (!bridge) return;
+    try {
+      await bridge.ship_model?.("");
+    } catch {
+      /* noop */
+    }
+    setTimeout(refresh, 400);
+  };
+
+  const doUnship = async () => {
+    if (!bridge) return;
+    try {
+      await bridge.unship_model?.();
+    } catch {
+      /* noop */
+    }
+    setRunRes(null);
+    setTimeout(refresh, 400);
+  };
+
+  const doRun = async () => {
+    if (!bridge || running) return;
+    setRunning(true);
+    try {
+      setRunRes(JSON.parse(await bridge.run_inference()));
+    } catch {
+      /* noop */
+    }
+    setRunning(false);
   };
 
   if (!state) {
@@ -327,6 +361,62 @@ export function WorkflowPanel() {
                     <span className="text-warn">
                       {testRes.error || testRes.status}
                     </span>
+                  )}
+                </div>
+              )}
+
+              {/* Ship → production (Phase 83) */}
+              {model.state === "validated" && (
+                <button
+                  onClick={doShip}
+                  className="ark-btn-primary mt-1.5 w-full text-[10px] py-1.5 flex items-center justify-center gap-1.5"
+                  title="Gèle les poids + passe en mode outil production"
+                >
+                  <Rocket className="w-3 h-3" /> Mettre en production
+                </button>
+              )}
+              {model.state === "operational" && (
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={doRun}
+                      disabled={running}
+                      className="ark-btn-primary flex-1 text-[10px] py-1 flex items-center justify-center gap-1 disabled:opacity-50"
+                      title="Exécute le modèle sur l'entrée courante (mode outil)"
+                    >
+                      {running ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Play className="w-3 h-3 fill-current" />
+                      )}
+                      Exécuter
+                    </button>
+                    <button
+                      onClick={doUnship}
+                      className="text-[10px] px-2 py-1 rounded-sm border border-border text-fg-tertiary hover:bg-bg-raised"
+                      title="Retire de production → repasse validé"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                  {runRes?.status === "ok" && runRes.outputs?.length > 0 && (
+                    <div className="rounded-sm border border-primary/40 bg-primary/5 px-2 py-1 space-y-0.5">
+                      {runRes.outputs.map((o: any, i: number) => (
+                        <div key={i} className="text-[10px]">
+                          <span className="text-fg-disabled">{o.title} →</span>{" "}
+                          <span className="text-primary font-bold">{o.result}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {runRes?.status === "ok" && !runRes.outputs?.length && (
+                    <p className="text-[9px] text-fg-disabled">
+                      Aucune sortie affichable. Ajoute un viewer (top_k /
+                      number_display).
+                    </p>
+                  )}
+                  {runRes?.status === "error" && (
+                    <p className="text-[9px] text-warn">{runRes.error}</p>
                   )}
                 </div>
               )}

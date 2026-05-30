@@ -864,6 +864,39 @@ class ArkBridge(QObject):
         except Exception as e:
             return _json.dumps({"status": "error", "error": str(e)})
 
+    @Slot(str, result=str)
+    def ship_model(self, name: str = ""):
+        """Phase 83 : passe le modèle validé en production (opérationnel)."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "_on_ship"):
+            return _json.dumps({"status": "error", "error": "no window"})
+        try:
+            return _json.dumps(self._mw._on_ship(name or ""))
+        except Exception as e:
+            return _json.dumps({"status": "error", "error": str(e)})
+
+    @Slot(result=str)
+    def unship_model(self):
+        """Phase 83 : retire de production → revient à validé."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "_on_unship"):
+            return _json.dumps({"status": "error", "error": "no window"})
+        try:
+            return _json.dumps(self._mw._on_unship())
+        except Exception as e:
+            return _json.dumps({"status": "error", "error": str(e)})
+
+    @Slot(result=str)
+    def run_inference(self):
+        """Phase 83 : exécute le modèle (mode outil) → sorties affichables."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "_run_inference"):
+            return _json.dumps({"status": "error", "error": "no window"})
+        try:
+            return _json.dumps(self._mw._run_inference())
+        except Exception as e:
+            return _json.dumps({"status": "error", "error": str(e)})
+
     @Slot()
     def train_and_keep(self):
         """Phase 80 : entraîne la scène + persiste les poids (opérationnel)."""
