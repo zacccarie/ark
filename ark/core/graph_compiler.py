@@ -776,16 +776,33 @@ class GraphModel(nn.Module):
         return value
 
     def forward(self, x):
+        # Phase 81b : source nodes (loaders/const) émettent souvent des tensors
+        # CPU. Si le modèle est sur mps/cuda → mismatch device. On déplace tout
+        # output de source vers le device des paramètres.
+        try:
+            _dev = next(self.parameters()).device
+        except StopIteration:
+            _dev = None
+
+        def _mv(v):
+            if _dev is None:
+                return v
+            if torch.is_tensor(v):
+                return v.to(_dev)
+            if isinstance(v, (tuple, list)):
+                return type(v)(_mv(e) for e in v)
+            return v
+
         # Phase 48 fix : si input_id a un module multi-output (loader/empty_latent/etc),
         # exécute-le au lieu de le préempter avec dummy x.
         if self.input_id in self.modules_dict:
             input_mod = self.modules_dict[self.input_id]
             try:
-                cache: dict = {self.input_id: input_mod()}
+                cache: dict = {self.input_id: _mv(input_mod())}
             except TypeError:
-                cache = {self.input_id: input_mod(None)}
+                cache = {self.input_id: _mv(input_mod(None))}
         else:
-            cache = {self.input_id: x}
+            cache = {self.input_id: _mv(x)}
 
         # Lance les autres source nodes
         for nid in self.source_node_ids:
@@ -800,14 +817,15 @@ class GraphModel(nn.Module):
             if ups and all(u in cache for u in ups):
                 up_vals = [cache[u] for u in ups]
                 try:
-                    cache[nid] = mod(*up_vals) if len(up_vals) > 1 else mod(up_vals[0])
+                    cache[nid] = _mv(mod(*up_vals) if len(up_vals) > 1
+                                     else mod(up_vals[0]))
                     continue
                 except Exception:
                     pass  # fallback no-arg call
             try:
-                cache[nid] = mod()
+                cache[nid] = _mv(mod())
             except TypeError:
-                cache[nid] = mod(None)
+                cache[nid] = _mv(mod(None))
 
         for node in self.ordered_nodes:
             nid = node.id
