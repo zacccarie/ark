@@ -89,38 +89,86 @@ def load_weights(model, signature: str) -> bool:
         return False
 
 
-def weights_info(signature: str) -> dict:
-    """{exists, trained_at, val_acc, n_params, operational}."""
+def _load_meta(signature: str) -> dict:
     jp = WEIGHTS_DIR / f"{signature}.json"
+    if jp.exists():
+        try:
+            return json.loads(jp.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _write_meta(signature: str, m: dict):
+    WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+    (WEIGHTS_DIR / f"{signature}.json").write_text(json.dumps(m, indent=2))
+
+
+def weights_info(signature: str) -> dict:
+    """{exists, saved_at, val_acc, n_params, kind, trained, validated,
+    operational, test_metric, test_metric_name, test_gap}."""
     pt = WEIGHTS_DIR / f"{signature}.pt"
     if not pt.exists():
         return {"exists": False}
     out = {"exists": True}
-    if jp.exists():
-        try:
-            out.update(json.loads(jp.read_text()))
-        except Exception:
-            pass
-    out["operational"] = bool(out.get("val_acc", 0) and
-                                  out.get("val_acc", 0) > 0)
+    out.update(_load_meta(signature))
+    # États lus tels quels (plus dérivés de val_acc > 0 — Phase 81)
+    out["validated"] = bool(out.get("validated", False))
+    out["operational"] = bool(out.get("operational", False))
     return out
 
 
-def mark_operational(signature: str, val_acc: float, extra: Optional[dict] = None):
-    jp = WEIGHTS_DIR / f"{signature}.json"
-    m = {}
-    if jp.exists():
-        try:
-            m = json.loads(jp.read_text())
-        except Exception:
-            pass
+def model_state_from_info(info: dict) -> str:
+    """blank → trained → validated → operational (Phase 81)."""
+    if not info.get("exists"):
+        return "blank"
+    if info.get("operational"):
+        return "operational"
+    if info.get("validated"):
+        return "validated"
+    return "trained"
+
+
+def mark_trained(signature: str, train_acc: float = 0.0, val_acc: float = 0.0,
+                 kind: str = "classifier", extra: Optional[dict] = None):
+    """Post-entraînement : poids persistés, PAS encore validés (held-out)."""
+    m = _load_meta(signature)
+    m["trained_at"] = time.time()
+    m["train_acc"] = float(train_acc)
     m["val_acc"] = float(val_acc)
-    m["operational"] = True
-    m["validated_at"] = time.time()
+    m["kind"] = kind
+    m["validated"] = False
+    m["operational"] = False
     if extra:
         m.update(extra)
-    WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
-    jp.write_text(json.dumps(m, indent=2))
+    _write_meta(signature, m)
+
+
+def mark_validated(signature: str, test_metric: float, metric_name: str = "accuracy",
+                   gap: float = 0.0, kind: str = "classifier",
+                   extra: Optional[dict] = None):
+    """Test held-out passé → modèle VALIDÉ (généralise)."""
+    m = _load_meta(signature)
+    m["validated"] = True
+    m["validated_at"] = time.time()
+    m["test_metric"] = float(test_metric)
+    m["test_metric_name"] = metric_name
+    m["test_gap"] = float(gap)
+    m["kind"] = kind
+    if extra:
+        m.update(extra)
+    _write_meta(signature, m)
+
+
+def mark_operational(signature: str, val_acc: float, extra: Optional[dict] = None):
+    """Mis en production (Phase 83 ship). Conserve val_acc pour compat."""
+    m = _load_meta(signature)
+    m["val_acc"] = float(val_acc)
+    m["operational"] = True
+    m["shipped_at"] = time.time()
+    if extra:
+        m.update(extra)
+    _write_meta(signature, m)
 
 
 def clear_weights(signature: str):

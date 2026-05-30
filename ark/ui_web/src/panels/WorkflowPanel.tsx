@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { getBridge } from "@/lib/bridge";
 import {
   Blocks, Cpu, Activity, CheckCircle2, Rocket, RefreshCw,
-  Check, Circle, Play, ChevronRight,
+  Check, Circle, Play, ChevronRight, FlaskConical, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,15 +30,74 @@ const ICONS: Record<string, any> = {
 };
 
 type ModelState = {
-  state: "empty" | "blank" | "trained" | "operational";
+  state: "empty" | "blank" | "trained" | "validated" | "operational";
   val_acc?: number;
   n_params?: number;
+  validated?: boolean;
+  test_metric?: number | null;
+  test_metric_name?: string;
+  test_gap?: number | null;
+  kind?: string;
+  kindLabel?: string;
+  metricName?: string;
+};
+
+type TestResult = {
+  status: string;
+  metric?: number | null;
+  metric_name?: string;
+  accuracy?: number;
+  gap?: number | null;
+  passed?: boolean;
+  note?: string;
+  error?: string;
+  kindLabel?: string;
+};
+
+// Formate une métrique selon son nom
+function fmtMetric(name?: string, v?: number | null): string {
+  if (v == null) return "—";
+  if (name === "accuracy") return `${(v * 100).toFixed(1)}%`;
+  return v.toFixed(3);
+}
+
+const STATE_META: Record<
+  string,
+  { label: string; box: string; dot: string }
+> = {
+  operational: {
+    label: "OPÉRATIONNEL",
+    box: "bg-primary/10 border-primary/50",
+    dot: "bg-primary",
+  },
+  validated: {
+    label: "VALIDÉ · généralise",
+    box: "bg-accent-blue/10 border-accent-blue/50",
+    dot: "bg-accent-blue",
+  },
+  trained: {
+    label: "Entraîné · à valider",
+    box: "bg-warn/10 border-warn/50",
+    dot: "bg-warn",
+  },
+  blank: {
+    label: "Modèle vierge",
+    box: "bg-bg-raised border-border",
+    dot: "bg-fg-disabled",
+  },
+  empty: {
+    label: "Scène vide",
+    box: "bg-bg-raised border-border",
+    dot: "bg-fg-disabled",
+  },
 };
 
 export function WorkflowPanel() {
   const [bridge, setBridge] = useState<any>(null);
   const [state, setState] = useState<State | null>(null);
   const [model, setModel] = useState<ModelState | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testRes, setTestRes] = useState<TestResult | null>(null);
 
   const refresh = useCallback(async () => {
     const b = bridge || (await getBridge());
@@ -67,6 +126,19 @@ export function WorkflowPanel() {
     if (action === "compile") bridge.compile?.(1);
     if (action === "train") bridge.raise_compute?.(); // Modal panel for train
     setTimeout(refresh, 600);
+  };
+
+  const doTest = async () => {
+    if (!bridge || testing) return;
+    setTesting(true);
+    try {
+      const r = JSON.parse(await bridge.evaluate_model());
+      setTestRes(r);
+    } catch {
+      /* noop */
+    }
+    setTesting(false);
+    setTimeout(refresh, 400);
   };
 
   if (!state) {
@@ -98,70 +170,132 @@ export function WorkflowPanel() {
         </button>
       </div>
 
-      {/* Model state badge */}
-      {model && (
-        <div className="px-3 py-2 border-b border-border-subtle">
-          <div
-            className={cn(
-              "flex items-center gap-2 px-2.5 py-1.5 rounded-md border",
-              model.state === "operational"
-                ? "bg-primary/10 border-primary/50"
-                : model.state === "trained"
-                ? "bg-warn/10 border-warn/50"
-                : "bg-bg-raised border-border"
-            )}
-          >
-            <span
-              className={cn(
-                "w-2.5 h-2.5 rounded-full",
-                model.state === "operational"
-                  ? "bg-primary"
-                  : model.state === "trained"
-                  ? "bg-warn"
-                  : "bg-fg-disabled"
-              )}
-            />
-            <span className="text-xs font-bold text-fg">
-              {model.state === "operational"
-                ? "Modèle OPÉRATIONNEL"
-                : model.state === "trained"
-                ? "Modèle entraîné"
-                : model.state === "blank"
-                ? "Modèle vierge"
-                : "Scène vide"}
-            </span>
-            {model.val_acc != null && model.val_acc > 0 && (
-              <span className="text-[11px] text-primary font-mono ml-1">
-                acc {(model.val_acc * 100).toFixed(1)}%
-              </span>
-            )}
-            <div className="flex-1" />
-            {model.state !== "empty" && (
-              <button
-                onClick={() => {
-                  bridge?.train_and_keep?.();
-                  setTimeout(refresh, 800);
-                }}
-                className="ark-btn-primary text-[10px] px-2 py-1 flex items-center gap-1"
+      {/* Model state badge — Phase 81 : vierge→entraîné→validé→opérationnel */}
+      {model &&
+        (() => {
+          const sm = STATE_META[model.state] || STATE_META.blank;
+          const canTest =
+            model.state === "trained" ||
+            model.state === "validated" ||
+            model.state === "operational";
+          return (
+            <div className="px-3 py-2 border-b border-border-subtle">
+              <div
+                className={cn(
+                  "flex items-center gap-2 px-2.5 py-1.5 rounded-md border",
+                  sm.box
+                )}
               >
-                <Play className="w-3 h-3 fill-current" />
-                {model.state === "blank" ? "Entraîner & garder" : "Ré-entraîner"}
-              </button>
-            )}
-          </div>
-          {model.state === "operational" && (
-            <p className="text-[10px] text-primary mt-1 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Prêt one-shot · les poids
-              sont rechargés à chaque compile.
-            </p>
-          )}
-          {model.state === "blank" && (
-            <p className="text-[10px] text-fg-disabled mt-1">
-              Poids aléatoires. Entraîne pour des prédictions réelles.
-            </p>
-          )}
-        </div>
-      )}
+                <span className={cn("w-2.5 h-2.5 rounded-full", sm.dot)} />
+                <span className="text-xs font-bold text-fg">{sm.label}</span>
+                {model.kindLabel && (
+                  <span className="text-[9px] uppercase tracking-wider text-fg-tertiary border border-border-subtle rounded-sm px-1 py-0.5">
+                    {model.kindLabel}
+                  </span>
+                )}
+                {model.state === "validated" && model.test_metric != null && (
+                  <span className="text-[11px] text-accent-blue font-mono ml-1">
+                    {model.test_metric_name || "test"}{" "}
+                    {fmtMetric(model.test_metric_name, model.test_metric)}
+                  </span>
+                )}
+                {model.state !== "validated" &&
+                  model.val_acc != null &&
+                  model.val_acc > 0 && (
+                    <span className="text-[11px] text-fg-secondary font-mono ml-1">
+                      val {(model.val_acc * 100).toFixed(1)}%
+                    </span>
+                  )}
+                <div className="flex-1" />
+                {model.state !== "empty" && (
+                  <button
+                    onClick={() => {
+                      bridge?.train_and_keep?.();
+                      setTimeout(refresh, 800);
+                    }}
+                    className="text-[10px] px-2 py-1 rounded-sm border border-border text-fg-secondary hover:bg-bg-raised flex items-center gap-1"
+                    title="Entraîne puis persiste les poids"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    {model.state === "blank" ? "Entraîner" : "Ré-entraîner"}
+                  </button>
+                )}
+                {canTest && (
+                  <button
+                    onClick={doTest}
+                    disabled={testing}
+                    className="ark-btn-primary text-[10px] px-2 py-1 flex items-center gap-1 disabled:opacity-50"
+                    title="Test sur données held-out (jamais vues) → valide la généralisation"
+                  >
+                    {testing ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <FlaskConical className="w-3 h-3" />
+                    )}
+                    Tester
+                  </button>
+                )}
+              </div>
+
+              {/* Ligne contextuelle selon l'état */}
+              {model.state === "operational" && (
+                <p className="text-[10px] text-primary mt-1 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> En production · poids
+                  rechargés à chaque compile.
+                </p>
+              )}
+              {model.state === "validated" && (
+                <p className="text-[10px] text-accent-blue mt-1 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Généralise sur held-out
+                  {model.test_gap != null &&
+                    ` · gap train−test ${(model.test_gap * 100).toFixed(1)}pt`}
+                  .
+                </p>
+              )}
+              {model.state === "trained" && (
+                <p className="text-[10px] text-warn mt-1">
+                  Entraîné mais pas prouvé. Clique <b>Tester</b> (données jamais
+                  vues) pour valider la généralisation.
+                </p>
+              )}
+              {model.state === "blank" && (
+                <p className="text-[10px] text-fg-disabled mt-1">
+                  Poids aléatoires. Entraîne pour des prédictions réelles.
+                </p>
+              )}
+
+              {/* Résultat de test détaillé */}
+              {testRes && (
+                <div className="mt-1.5 text-[10px] rounded-sm border border-border-subtle bg-bg-raised px-2 py-1">
+                  {testRes.status === "ok" ? (
+                    <span
+                      className={testRes.passed ? "text-primary" : "text-warn"}
+                    >
+                      {testRes.passed ? "✓ validé" : "✗ sous le seuil"} ·{" "}
+                      {testRes.metric_name}{" "}
+                      {fmtMetric(testRes.metric_name, testRes.metric)}
+                      {testRes.gap != null &&
+                        ` · gap ${(testRes.gap * 100).toFixed(1)}pt`}
+                    </span>
+                  ) : testRes.status === "needs_reference_set" ? (
+                    <span className="text-fg-tertiary">
+                      {testRes.note ||
+                        "Harnais d'évaluation dédié requis pour ce type."}
+                    </span>
+                  ) : testRes.status === "not_trained" ? (
+                    <span className="text-fg-tertiary">
+                      Modèle vierge — entraîne d'abord.
+                    </span>
+                  ) : (
+                    <span className="text-warn">
+                      {testRes.error || testRes.status}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       {/* Timeline */}
       <div className="flex items-center px-3 py-3 border-b border-border-subtle overflow-x-auto">

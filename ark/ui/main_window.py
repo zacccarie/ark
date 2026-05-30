@@ -1087,25 +1087,87 @@ class MainWindow(QMainWindow):
             for n in self.scene.nodes():
                 if n.status == "training":
                     n.set_status("ok")
-            # Phase 80 : PERSISTE les poids entraînés + marque opérationnel
+            # Phase 81 : PERSISTE les poids → état ENTRAÎNÉ (pas encore validé).
+            # La validation passe par un TEST held-out distinct (_on_evaluate).
             try:
-                from ark.core.weights import save_weights, mark_operational
+                from ark.core.weights import save_weights, mark_trained
+                from ark.core.model_kind import detect_kind_from_scene
                 sig = getattr(self._compiled, "signature", None) or \
                     getattr(self._compiled.model, "_ark_signature", None)
                 if sig:
-                    val_acc = float(info.get("val_acc") or info.get("train_acc") or 0)
+                    val_acc = float(info.get("val_acc") or 0)
+                    train_acc = float(info.get("train_acc") or 0)
+                    kind = detect_kind_from_scene(self.scene).kind
                     save_weights(self._compiled.model, sig,
-                                     meta={"val_acc": val_acc})
-                    mark_operational(sig, val_acc)
+                                     meta={"val_acc": val_acc, "kind": kind})
+                    mark_trained(sig, train_acc=train_acc, val_acc=val_acc,
+                                     kind=kind)
                     self.terminal.append_log(
-                        f"[train] ✓ Poids sauvegardés (sig {sig}) · "
-                        f"modèle OPÉRATIONNEL · acc {val_acc*100:.1f}%")
-                    # notifie le bridge web (badge workflow)
+                        f"[train] ✓ Poids sauvegardés (sig {sig}) · ENTRAÎNÉ · "
+                        f"val_acc {val_acc*100:.1f}% — lance « Tester » "
+                        f"(held-out) pour VALIDER la généralisation.")
                     if getattr(self, "_web_bridge", None) is not None:
                         self._web_bridge.emit_log(
-                            f"[model] opérationnel · acc {val_acc*100:.1f}%")
+                            f"[model] entraîné · val_acc {val_acc*100:.1f}% · "
+                            f"à valider")
             except Exception as e:
                 self.terminal.append_log(f"[train] save weights warn: {e}")
+
+    def _on_evaluate(self) -> dict:
+        """Phase 81 : TEST held-out kind-aware → marque VALIDÉ si seuil passé.
+        Renvoie un dict JSON-sérialisable (consommé par le bridge web)."""
+        from ark.core.graph_compiler import compile_scene, GraphCompileError
+        from ark.core.model_kind import detect_kind_from_scene
+        from ark.core.evaluate import (evaluate_compiled, passes,
+                                          mnist_test_loader)
+        from ark.core.weights import (signature_from_scene, weights_info,
+                                          mark_validated)
+        from ark.core.trainer import pick_device
+        spec = detect_kind_from_scene(self.scene)
+        try:
+            compiled = compile_scene(self.scene, num_classes=10)
+        except GraphCompileError as e:
+            self.terminal.append_log(f"[test] compile error : {e}")
+            return {"status": "error", "error": str(e), "kind": spec.kind}
+        sig = getattr(compiled, "signature", None) or \
+            signature_from_scene(self.scene)
+        info = weights_info(sig)
+        if not info.get("exists"):
+            self.terminal.append_log("[test] modèle VIERGE — entraîne d'abord.")
+            return {"status": "not_trained", "kind": spec.kind,
+                    "kindLabel": spec.label}
+        self.terminal.append_log(
+            f"[test] held-out · type={spec.label} · "
+            f"métrique={spec.primary_metric}…")
+        loader = mnist_test_loader(n_test=2000, offset=2000) \
+            if spec.kind == "classifier" else None
+        train_acc = float(info.get("train_acc") or 0)
+        res = evaluate_compiled(compiled, spec, loader,
+                                    device=pick_device(), train_acc=train_acc)
+        res["signature"] = sig
+        res["kindLabel"] = spec.label
+        if res.get("status") == "ok":
+            ok = passes(spec, res)
+            mname, mval, gap = (res.get("metric_name"), res.get("metric"),
+                                res.get("gap"))
+            if ok:
+                mark_validated(sig, float(mval), metric_name=mname,
+                                   gap=float(gap or 0), kind=spec.kind)
+                self.terminal.append_log(
+                    f"[test] ✓ VALIDÉ · {mname}={mval} · "
+                    f"gap train−test={gap} · le modèle généralise.")
+            else:
+                self.terminal.append_log(
+                    f"[test] ✗ sous le seuil · {mname}={mval} "
+                    f"(seuil {spec.pass_threshold}). Non validé.")
+            res["passed"] = ok
+        else:
+            self.terminal.append_log(
+                f"[test] {res.get('status')} — "
+                f"{res.get('note') or res.get('error', '')}")
+        if getattr(self, "_web_bridge", None) is not None:
+            self._web_bridge.emit_log(f"[model] test : {res.get('status')}")
+        return res
 
     def _on_stop(self):
         if hasattr(self, "_worker") and self._worker is not None:

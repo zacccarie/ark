@@ -774,24 +774,60 @@ class ArkBridge(QObject):
         if self._mw is None or not hasattr(self._mw, "scene"):
             return _json.dumps({"state": "empty"})
         try:
-            from ark.core.weights import signature_from_scene, weights_info
+            from ark.core.weights import (signature_from_scene, weights_info,
+                                          model_state_from_info)
+            from ark.core.model_kind import detect_kind_from_scene
             sig = signature_from_scene(self._mw.scene)
             info = weights_info(sig)
-            if not info.get("exists"):
-                state = "blank"
-            elif info.get("operational"):
-                state = "operational"
-            else:
-                state = "trained"
+            state = model_state_from_info(info)
+            spec = detect_kind_from_scene(self._mw.scene)
             return _json.dumps({
                 "state": state,
                 "signature": sig,
                 "val_acc": info.get("val_acc"),
                 "n_params": info.get("n_params"),
                 "saved_at": info.get("saved_at"),
+                "validated": info.get("validated", False),
+                "test_metric": info.get("test_metric"),
+                "test_metric_name": info.get("test_metric_name"),
+                "test_gap": info.get("test_gap"),
+                "kind": spec.kind,
+                "kindLabel": spec.label,
+                "metricName": spec.primary_metric,
             })
         except Exception as e:
             return _json.dumps({"state": "blank", "error": str(e)})
+
+    @Slot(result=str)
+    def model_kind(self):
+        """Phase 81 : type de modèle inféré + critère de validité."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "scene"):
+            return _json.dumps({"kind": "unknown"})
+        try:
+            from ark.core.model_kind import detect_kind_from_scene
+            s = detect_kind_from_scene(self._mw.scene)
+            return _json.dumps({
+                "kind": s.kind, "label": s.label,
+                "metric": s.primary_metric, "direction": s.metric_direction,
+                "needsLabels": s.needs_labels,
+                "hasGroundTruth": s.has_ground_truth,
+                "demoHint": s.demo_hint, "threshold": s.pass_threshold,
+                "secondary": list(s.secondary),
+            })
+        except Exception as e:
+            return _json.dumps({"kind": "unknown", "error": str(e)})
+
+    @Slot(result=str)
+    def evaluate_model(self):
+        """Phase 81 : lance le test held-out + marque validé si seuil passé."""
+        import json as _json
+        if self._mw is None or not hasattr(self._mw, "_on_evaluate"):
+            return _json.dumps({"status": "error", "error": "no window"})
+        try:
+            return _json.dumps(self._mw._on_evaluate())
+        except Exception as e:
+            return _json.dumps({"status": "error", "error": str(e)})
 
     @Slot()
     def train_and_keep(self):
