@@ -74,12 +74,19 @@ class ClassEmbedding(nn.Module):
         self.num_classes = num_classes
         self.dim = dim
 
-    def forward(self, labels):
-        if isinstance(labels, int):
-            labels = torch.tensor([labels], dtype=torch.long)
+    def forward(self, labels=None):
+        # Phase 81c : robuste si appelé sans label (node source) → embedding
+        # inconditionnel (slot num_classes réservé). Garde le device cohérent.
+        dev = self.embed.weight.device
+        if labels is None or not torch.is_tensor(labels):
+            if isinstance(labels, int):
+                labels = torch.tensor([labels], dtype=torch.long, device=dev)
+            else:
+                labels = torch.full((1,), self.num_classes, dtype=torch.long,
+                                    device=dev)
         if labels.dim() == 0:
             labels = labels.unsqueeze(0)
-        return self.embed(labels.long())
+        return self.embed(labels.long().to(dev))
 
 
 # ============================================================
